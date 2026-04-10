@@ -129,6 +129,7 @@ Torch is built on [pi-coding-agent](https://github.com/badlogic/pi-mono)'s skill
 | Skill | Purpose |
 |---|---|
 | 🕷️ **`scrape`** | Full scraping workflow — recon, strategy, extraction, anti-blocking, playbook authoring |
+| 🔓 **`reverse-engineer`** | Find hidden APIs, decrypt encrypted endpoints, trace WebSocket streams, extract auth tokens from obfuscated JS |
 | 🦊 **`camoufox`** | Firefox fork with C++-level fingerprint spoofing — use on VMs / CI where real-Chrome-clone can't run |
 | 🤖 **`2captcha`** | Solve reCAPTCHA v2/v3, Turnstile, hCaptcha via the 2Captcha API (human workers, ~$1/1k) |
 | 🧠 **`capmonster`** | Cheaper AI-based solver with `cf_clearance` support (~$0.60/1k) |
