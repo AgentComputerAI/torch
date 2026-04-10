@@ -1,6 +1,6 @@
 {
   "name": "@agentcomputer/torch",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "🔥 The self-healing AI scraping agent 🔥",
   "license": "MIT",
   "type": "module",
@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@aliou/pi-processes": "^0.7.1",
+    "@clack/prompts": "^1.2.0",
     "@mariozechner/pi-coding-agent": "^0.65.0",
     "cheerio": "^1.2.0",
     "lz-string": "^1.5.0",

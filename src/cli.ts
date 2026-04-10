@@ -12,6 +12,7 @@ import { resolve, dirname, delimiter } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { isSetupComplete, loadTorchEnv, runSetup } from "./setup.js";
 
 function loadEnv(dir: string): void {
   const envPath = resolve(dir, ".env");
@@ -294,6 +295,7 @@ function printHelp(): void {
   console.log('    \x1b[38;2;255;140;0mtorch\x1b[0m <url> "what to extract"      One-shot scrape');
   console.log("    \x1b[38;2;255;140;0mtorch\x1b[0m <url>                        Scrape all structured data");
   console.log("    \x1b[38;2;255;140;0mtorch --rpc\x1b[0m                        JSONL RPC mode (stdin/stdout)");
+  console.log("    \x1b[38;2;255;140;0mtorch setup\x1b[0m                        Configure API keys and services");
   console.log("");
   console.log("  \x1b[1mOptions:\x1b[0m");
   console.log("    --rpc                Start in RPC mode (JSONL over stdin/stdout)");
@@ -340,6 +342,11 @@ export async function main(): Promise<void> {
 
   const home = getTorchHome();
   seedHome(home);
+  loadTorchEnv(home, APP_ROOT);
+
+  if (!isSetupComplete(home) && !values.rpc) {
+    await runSetup(home, APP_ROOT);
+  }
 
   const chromeEndpoint = await ensureChromeEndpoint();
 
