@@ -71,17 +71,17 @@ Based on framework detected in Phase 0, use the matching strategy from `strategi
 
 **Gate B**: Clean API or JSON data source found → skip browser, go to Phase 3.
 
-### Phase 1.5 — API reverse engineering (before reaching for a browser)
+### Phase 2 — API reverse engineering (before reaching for a browser)
 
 If Phase 0-1 found hints of an API (XHR URLs in the source, `/api/` or `/graphql` endpoints, CloudFront domains, WebSocket URLs) but the responses are encrypted, signed, or behind auth — read the `reverse-engineer` skill and work through its levels. Often you can replay the API directly with `fetch` once you extract the right headers/tokens, completely skipping the browser.
 
-**This is almost always faster than browser scraping.** A `fetch` call takes 50ms. A Puppeteer page load takes 3-10 seconds. If the data exists behind an API, reverse-engineering that API is the right move even if it takes 10 minutes of investigation — the resulting scraper will be 100x faster and more reliable than a DOM-based one.
+A `fetch` call takes 50ms. A Puppeteer page load takes 3-10 seconds. If the data exists behind an API, reverse-engineering that API is the right move even if it takes 10 minutes of investigation — the resulting scraper will be 100x faster and more reliable than a DOM-based one.
 
-**Gate B.5**: API replayed successfully with `fetch` → skip browser entirely, go to Phase 3.
+**Gate C**: API replayed successfully with `fetch` → skip browser entirely, go to Phase 4.
 
-### Phase 2 — browser scraping (last resort)
+### Phase 3 — browser scraping (last resort)
 
-Only when Phase 0-1.5 failed or when the site genuinely renders data client-side with no API:
+Only when Phase 0-2 failed or when the site genuinely renders data client-side with no API:
 
 1. **First, try connecting to the real Chrome at `http://127.0.0.1:9222`** (via `puppeteer.connect`). Torch auto-launches a Chrome instance on that port at startup using a clone of the user's profile, so this attaches to a real browser with real cookies, history, and TLS session state — the single biggest anti-blocking win.
 2. If the connect throws (no Chrome running — e.g. VM or CI), check `process.env.TORCH_CAMOUFOX_ENDPOINT` and connect via `playwright-core`'s `firefox.connect(ws://...)` for the C++-level stealth fallback. See the `camoufox` skill for setup.
@@ -141,7 +141,7 @@ try {
 
 The `disconnect()` vs `close()` distinction matters: `close()` would kill the user's real Chrome instance. Always `disconnect()` on the real-Chrome tier.
 
-### Phase 3 — validate and extract
+### Phase 4 — validate and extract
 
 1. Test selectors/API endpoints against live data
 2. Confirm data shape matches what user asked for
