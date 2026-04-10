@@ -1,27 +1,35 @@
 ---
 name: reverse-engineer
-description: Reverse-engineer a website's internal APIs, encrypted endpoints, WebSocket streams, and obfuscated JavaScript. Activates when the target data isn't in the HTML, when the site uses encrypted CloudFront payloads, when real-time streaming data is needed, or when the scrape skill's Phase 0-1 finds API calls but can't read them because they're encrypted, signed, or behind a custom protocol.
+description: Reverse-engineer a website's internal APIs, encrypted endpoints, WebSocket streams, and obfuscated JavaScript. Activates when the target data isn't in the HTML, when the site uses encrypted CloudFront/CDN payloads, when real-time streaming data is needed, or when the scrape skill's Phase 0-1 finds API calls that are encrypted, signed, or behind a custom protocol. Escalation ladder from simple network capture to protobuf schema reconstruction.
 metadata:
   author: torch
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Reverse Engineering
 
-When the data isn't in the HTML, it's in an API. When the API isn't public, it's hidden in the JavaScript. When the JavaScript is obfuscated, the keys are still in the page source. This skill is the playbook for finding and exploiting internal APIs that were never meant to be called directly.
+When the data isn't in the HTML, it's in an API. When the API isn't public, it's hidden in the JavaScript. When the JavaScript is obfuscated, the keys are still in the page source — because the browser needs them to decrypt, which means you can too.
 
-## When to use this skill
+This skill is an escalation ladder. Start at Level 1 and stop as soon as you have what you need.
 
-- The scrape skill's Phase 0 (curl) returns HTML with no data — everything loads via XHR/fetch after JS runs
-- Network tab shows API calls but the responses are encrypted, compressed, or encoded
-- The site uses WebSocket or Server-Sent Events for real-time data
-- GraphQL introspection is disabled but you can see queries in the source
-- The site has a mobile app whose API is more permissive than the web version
-- You need to sign requests with HMAC, generate tokens, or solve custom challenge-response protocols
+## Escalation ladder
 
-## Phase 0 — Network reconnaissance
+```
+  Level 1  📡  Network capture         watch DevTools, find the API call
+  Level 2  🔁  API replay              copy as cURL, replay with fetch
+  Level 3  🔑  Token extraction        find auth tokens, CSRF, API keys in page source
+  Level 4  📦  JS deobfuscation        unpack webpack, deobfuscate, read the source
+  Level 5  🔐  Payload decryption      NaCl / AES-GCM / CryptoJS — extract keys, decrypt
+  Level 6  🔌  WebSocket interception   establish WS, subscribe to channels, decode frames
+  Level 7  🔮  GraphQL reconstruction   extract queries from JS, force PersistedQueryNotFound
+  Level 8  🧬  Protobuf decoding       reverse-engineer .proto schema from binary blobs
+```
 
-Open the site in the real Chrome debug port and capture all network traffic:
+## Level 1 — Network capture
+
+**When**: Phase 0 curl returns HTML with no target data. The data loads via XHR/fetch after JS runs.
+
+Open the page in the real Chrome debug port, capture every API call during page load:
 
 ```js
 const page = await browser.newPage();
@@ -30,246 +38,472 @@ const apiCalls = [];
 page.on("response", async (res) => {
   const url = res.url();
   const ct = res.headers()["content-type"] || "";
-  if (ct.includes("json") || ct.includes("grpc") || ct.includes("protobuf") || url.includes("/api/") || url.includes("/graphql")) {
+  if (
+    ct.includes("json") || ct.includes("grpc") || ct.includes("protobuf") ||
+    url.includes("/api/") || url.includes("/graphql") || url.includes("/v1/") || url.includes("/v2/")
+  ) {
     try {
       const body = await res.text();
-      apiCalls.push({ url, status: res.status(), contentType: ct, bodyLength: body.length, bodySample: body.slice(0, 500) });
+      apiCalls.push({ url, status: res.status(), contentType: ct, size: body.length, sample: body.slice(0, 500) });
     } catch {}
   }
 });
 
 await page.goto(url, { waitUntil: "networkidle2" });
-console.log(`Captured ${apiCalls.length} API calls`);
+
 for (const call of apiCalls) {
-  console.log(`  ${call.status} ${call.url} (${call.contentType}, ${call.bodyLength} bytes)`);
-  console.log(`    ${call.bodySample.slice(0, 200)}`);
+  console.log(`${call.status} ${call.url} (${call.contentType}, ${call.size}B)`);
+  console.log(`  ${call.sample.slice(0, 200)}`);
 }
 ```
 
-This reveals every internal API the page calls during load. Most sites make 5-50 API calls, and 1-3 of them contain the target data.
+Most sites make 5-50 API calls during page load. Sort by response size — the largest JSON response usually contains the target data.
 
-## Phase 1 — Identify the data endpoint
+**Also capture request headers** — you'll need them for Level 2:
 
-Look for these patterns in the captured calls:
+```js
+page.on("request", (req) => {
+  if (req.url().includes("/api/") || req.url().includes("/graphql")) {
+    console.log("Request headers:", JSON.stringify(req.headers(), null, 2));
+    if (req.postData()) console.log("Post body:", req.postData().slice(0, 500));
+  }
+});
+```
 
-| Pattern | What it means |
-|---|---|
-| `/api/v1/...`, `/api/v2/...` | REST API, usually the easiest to replay |
-| `/graphql` with POST body | GraphQL — extract the query and variables |
-| `/__NEXT_DATA__` in HTML | Next.js — data is in the page source, not a separate API |
-| CloudFront domain (`d3*.cloudfront.net`) | CDN-cached API, possibly encrypted |
-| `wss://` or `ws://` in the JS | WebSocket for real-time data |
-| Response body starts with `"` and is base64 | Encrypted payload — needs decryption |
-| Response body is binary / protobuf | gRPC or custom binary protocol |
-| Response has `x-amz-*` headers | AWS API Gateway — may have signing requirements |
+**Quick alternative**: right-click any request in Chrome DevTools Network tab → "Copy as cURL (bash)" → paste into terminal. This copies method, headers, cookies, and payload in one shot.
 
-## Phase 2 — Replay the API directly
+**Tools**: Chrome DevTools Network tab, [API Reverse Engineer extension](https://github.com/ctala/api-reverse-engineer) (intercepts both fetch and XHR, exports JSON with every unique endpoint).
 
-Once you find the data endpoint, replay it with `fetch` (no browser needed):
+## Level 2 — API replay
+
+**When**: Level 1 found the data endpoint and it returns readable JSON.
+
+Strip the captured request down to the minimum headers that work:
 
 ```js
 const res = await fetch("https://api.example.com/v1/products?page=1", {
   headers: {
-    "User-Agent": "Mozilla/5.0 ...",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Accept": "application/json",
     "Referer": "https://www.example.com/",
     "Origin": "https://www.example.com",
-    // Copy any custom headers from the captured request
   },
 });
 const data = await res.json();
 ```
 
-If the API returns 401/403, you need to extract auth tokens — see Phase 3.
+Most internal APIs need fewer headers than the browser sends. Remove headers one at a time until you find the minimum set. Common essentials: `User-Agent`, `Referer`, `Origin`, and sometimes a custom caller-ID header (like Nike's `nike-api-caller-id`).
 
-## Phase 3 — Extract auth tokens and keys
+**If the API returns 401/403**: you need auth tokens → escalate to Level 3.
 
-Sites protect their internal APIs with various token schemes. All of them store the tokens somewhere the browser can read them — which means you can too.
+**If the response is encrypted or binary**: escalate to Level 5 (encryption) or Level 8 (protobuf).
 
-### Inline script variables
+## Level 3 — Token extraction
 
-```js
-const html = await (await fetch(url)).text();
+**When**: The API requires auth tokens, CSRF tokens, API keys, or session cookies that aren't in your cookie jar.
 
-// Look for API keys, tokens, session IDs in inline scripts
-const patterns = [
-  /api[_-]?key["'\s:=]+["']([^"']+)["']/gi,
-  /token["'\s:=]+["']([^"']+)["']/gi,
-  /client[_-]?id["'\s:=]+["']([^"']+)["']/gi,
-  /secret["'\s:=]+["']([a-zA-Z0-9+/=]{16,})["']/gi,
-  /nonce["'\s:=]+["']([a-zA-Z0-9+/=]{16,})["']/gi,
-];
+Tokens are always somewhere the browser can read them. Common hiding spots:
 
-for (const pattern of patterns) {
-  for (const match of html.matchAll(pattern)) {
-    console.log(`Found: ${match[0].slice(0, 100)}`);
-  }
-}
+| Location | How to extract |
+|---|---|
+| Inline `<script>` variables | Regex the HTML: `/api[_-]?key["'\s:=]+["']([^"']+)/gi` |
+| `__NEXT_DATA__` props | `JSON.parse(document.getElementById('__NEXT_DATA__').textContent).props.pageProps` |
+| `<meta>` tags | `document.querySelector('meta[name="csrf-token"]').content` |
+| Cookies set by JS | `await page.cookies()` — filter for `token`, `session`, `csrf`, `auth` |
+| `localStorage` / `sessionStorage` | `await page.evaluate(() => JSON.stringify(localStorage))` |
+| Custom request headers | Capture from Level 1's `page.on("request")` — sites often generate tokens in JS and attach as `X-CSRF-Token`, `Authorization`, or custom headers |
+| Hidden form inputs | `document.querySelector('input[name="authenticity_token"]').value` |
+
+For long-lived sessions, cookies and tokens from the real Chrome profile clone often work directly — the user is already authenticated. Check cookies first before extracting fresh tokens.
+
+**Obfuscated values**: if you see long unique-looking strings in request headers or query params, investigate when and where the first instance appeared. Use Chrome DevTools → "Search all files" (`Ctrl+Shift+F`) to find where the value is generated. It may be hardcoded, base64-encoded, computed from request components, or generated by an external library.
+
+## Level 4 — JavaScript deobfuscation
+
+**When**: The JS source is minified/obfuscated and you need to read it to find API endpoints, encryption keys, or token generation logic.
+
+### Search before deobfuscating
+
+Chrome DevTools → Sources → "Search all files" (`Ctrl+Shift+F`):
+
+```
+file:* query {         → find GraphQL queries
+file:* mutation {      → find GraphQL mutations
+file:* /api/           → find API endpoint URLs
+file:* apiKey          → find API keys
+file:* secretbox       → find NaCl encryption
+file:* crypto.subtle   → find WebCrypto usage
+file:* AES             → find AES encryption
+file:* decrypt         → find decryption functions
 ```
 
-### Cookies set by JavaScript
+This is often enough without full deobfuscation.
 
-```js
-const cookies = await page.cookies();
-for (const cookie of cookies) {
-  if (cookie.name.includes("token") || cookie.name.includes("session") || cookie.name.includes("auth") || cookie.name.includes("csrf")) {
-    console.log(`${cookie.name} = ${cookie.value.slice(0, 50)}...`);
-  }
-}
+### Webpack unpacking
+
+Most modern sites bundle with webpack. Tools to unpack:
+
+| Tool | What it does |
+|---|---|
+| [webcrack](https://github.com/j4k0xb/webcrack) | Deobfuscate obfuscator.io, unminify, unpack webpack/browserify to resemble original source |
+| [wakaru](https://github.com/pionxzh/wakaru) | Unpack + unminify bundled JS |
+| [source-map-explorer](https://www.npmjs.com/package/source-map-explorer) | If `.map` files are exposed (check `//# sourceMappingURL=`), reconstruct original files |
+| [deobfuscate.io](https://deobfuscate.io) | Online automatic JS deobfuscation |
+| Prettier / js-beautify | Reformat minified code so it's readable |
+
+```bash
+# Unpack a webpack bundle locally
+npx webcrack bundle.js -o unpacked/
 ```
 
-### `__NEXT_DATA__` props
+### Chrome DevTools Protocol instrumentation
 
-Next.js pages embed API tokens in `props.pageProps`:
-
-```js
-const nextData = await page.$eval('#__NEXT_DATA__', el => JSON.parse(el.textContent));
-// Tokens are often in nextData.props.pageProps.csrfToken,
-// nextData.props.pageProps.session, or nextData.runtimeConfig
-```
-
-### Request headers from the network tab
-
-Some sites generate tokens in JS and attach them as headers. Capture the exact headers from a successful API call and replay them:
+For runtime analysis, use `Page.addScriptToEvaluateOnNewDocument` to inject code before the page's own scripts run:
 
 ```js
-page.on("request", (req) => {
-  if (req.url().includes("/api/")) {
-    console.log("Headers:", JSON.stringify(req.headers(), null, 2));
-  }
+await page.evaluateOnNewDocument(() => {
+  const origFetch = window.fetch;
+  window.fetch = async (...args) => {
+    console.log("[fetch]", args[0]?.url || args[0]);
+    return origFetch.apply(this, args);
+  };
 });
 ```
 
-## Phase 4 — Decrypt encrypted payloads
+This wins the "prototype race" — your patched `fetch` runs before the site's code, capturing every API call including ones fired during initialization.
 
-Some sites encrypt API responses client-side. The decryption key is always in the JavaScript — it has to be, because the browser needs it.
+### Breakpoints on crypto operations
 
-### Common encryption patterns
+Set conditional breakpoints on `crypto.subtle.decrypt`, `crypto.subtle.importKey`, or any function named `decrypt` to capture keys and IVs at runtime:
 
-| Library | How to detect | Key location |
+```js
+await page.evaluateOnNewDocument(() => {
+  const origDecrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+  crypto.subtle.decrypt = async (algo, key, data) => {
+    console.log("[crypto.subtle.decrypt]", JSON.stringify(algo), key, data.byteLength, "bytes");
+    const result = await origDecrypt(algo, key, data);
+    console.log("[decrypted]", new TextDecoder().decode(result).slice(0, 200));
+    return result;
+  };
+});
+```
+
+## Level 5 — Payload decryption
+
+**When**: API responses are base64-encoded blobs, not readable JSON. The response might start with `"` (JSON-wrapped base64 string) or contain binary data.
+
+The decryption key is always in the JavaScript — the browser needs it to show data to the user, which means you can extract it.
+
+### Detection patterns
+
+| What you see | Likely encryption | Next step |
 |---|---|---|
-| NaCl / libsodium `crypto_secretbox` | Base64 response, 24-byte nonce variable in JS | Look for `TEdecryptk`, `TEdecryptn`, or similar variables in inline scripts |
-| AES-GCM via WebCrypto | `crypto.subtle.decrypt` in JS | Key imported from a hardcoded base64 string or derived from a password |
-| Custom XOR / RC4 | Short key, repeating patterns in ciphertext | Key is usually a short string in the JS bundle |
-| pako / zlib compression (not encryption) | Response starts with `x\x9c` or `\x1f\x8b` | Just decompress, no key needed |
+| Base64 string, ~200 bytes, JS has `secretbox` or `nacl` | NaCl `crypto_secretbox` | Find key (32 bytes) + nonce (24 bytes) in JS variables |
+| Base64 string, JS has `crypto.subtle.decrypt` | WebCrypto AES-GCM or AES-CBC | Intercept `importKey` to capture the key + IV |
+| Base64 string, JS imports `CryptoJS` or `crypto-js` | CryptoJS AES | Search JS for `CryptoJS.AES.decrypt(ciphertext, key)` |
+| Response starts with `x\x9c` or `\x1f\x8b` | Not encrypted — just compressed (zlib / gzip) | `zlib.inflateSync(buffer)` or `zlib.gunzipSync(buffer)` |
+| Short repeating patterns in ciphertext | Custom XOR or RC4 | Key is usually a short string nearby in JS |
 
-### Decryption workflow
+### NaCl / libsodium `crypto_secretbox`
 
-1. Find the decryption function in the JS source (search for `decrypt`, `decipher`, `secretbox`, `crypto.subtle`)
-2. Extract the key and nonce/IV from the same source or from inline script variables
-3. Decrypt in Node:
+Used by Trading Economics and others. Look for variables named like `TEdecryptk`, `TEdecryptn`, or any 32-byte and 24-byte base64 strings near `secretbox` or `nacl` in the JS:
 
 ```js
 import { secretbox } from "tweetnacl";
 import { inflate } from "pako";
 
-const key = Buffer.from(keyBase64, "base64");
-const nonce = Buffer.from(nonceBase64, "base64");
+const key = Buffer.from(keyBase64, "base64");    // 32 bytes
+const nonce = Buffer.from(nonceBase64, "base64"); // 24 bytes
 const ciphertext = Buffer.from(ciphertextBase64, "base64");
 
 const plaintext = secretbox.open(ciphertext, nonce, key);
+if (!plaintext) throw new Error("Decryption failed — keys may have rotated");
+
 const decompressed = inflate(plaintext, { to: "string" });
 const data = JSON.parse(decompressed);
 ```
 
-If keys rotate per session, fetch the page first to extract fresh keys, then hit the API.
+If keys rotate per session: fetch the page first to extract fresh keys, then hit the encrypted API endpoint with those keys.
 
-## Phase 5 — WebSocket and streaming APIs
+### WebCrypto AES-GCM
 
-Real-time data (prices, sports scores, chat) often uses WebSocket or Server-Sent Events.
+Common pattern: the IV is embedded in the encrypted payload (first 12-16 bytes), the rest is ciphertext.
+
+```js
+const rawKey = Buffer.from(keyHex, "hex");
+const encrypted = Buffer.from(encryptedBase64, "base64");
+const iv = encrypted.slice(0, 12);
+const ciphertext = encrypted.slice(12);
+
+const cryptoKey = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
+const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, ciphertext);
+const text = new TextDecoder().decode(plaintext);
+```
+
+WebCrypto is cross-platform compatible with OpenSSL:
+```bash
+openssl enc -aes-256-gcm -d -in encrypted.bin -out decrypted.json -K <key_hex> -iv <iv_hex>
+```
+
+### CryptoJS / crypto-js (npm)
+
+Found on many older sites. Search the JS for `CryptoJS.AES.decrypt`:
+
+```js
+import CryptoJS from "crypto-js";
+const decrypted = CryptoJS.AES.decrypt(ciphertextBase64, secretKey);
+const plaintext = decrypted.toString(CryptoJS.enc.Utf8);
+```
+
+The key is often a plain string (not binary) passed directly to `CryptoJS.AES.encrypt/decrypt`. Search JS for string literals near the `CryptoJS` import.
+
+### Runtime key capture (universal)
+
+If you can't find the keys statically, intercept them at runtime:
+
+```js
+await page.evaluateOnNewDocument(() => {
+  const orig = crypto.subtle.importKey.bind(crypto.subtle);
+  crypto.subtle.importKey = async (format, keyData, algo, extractable, usages) => {
+    if (usages.includes("decrypt")) {
+      const hex = Array.from(new Uint8Array(keyData)).map(b => b.toString(16).padStart(2, "0")).join("");
+      console.log(`[KEY CAPTURED] format=${format} algo=${JSON.stringify(algo)} key=${hex}`);
+    }
+    return orig(format, keyData, algo, extractable, usages);
+  };
+});
+```
+
+Navigate to the page, let it load, and read the captured key from the console. This works for any WebCrypto-based encryption regardless of how the key is derived.
+
+## Level 6 — WebSocket interception
+
+**When**: The site uses real-time data (prices, scores, chat, notifications) delivered via WebSocket or Server-Sent Events.
 
 ### Finding the WebSocket endpoint
 
 ```js
-// Search page source for ws:// or wss:// URLs
-const wsUrls = html.match(/wss?:\/\/[^\s"']+/g);
-
-// Or intercept the WebSocket connection
 page.on("websocket", (ws) => {
   console.log(`WebSocket opened: ${ws.url()}`);
-  ws.on("framesent", (frame) => console.log(`→ ${frame.payload}`));
-  ws.on("framereceived", (frame) => console.log(`← ${frame.payload}`));
+  ws.on("framesent", (frame) => console.log(`→ ${typeof frame.payload === "string" ? frame.payload.slice(0, 200) : `[binary ${frame.payload.length}B]`}`));
+  ws.on("framereceived", (frame) => console.log(`← ${typeof frame.payload === "string" ? frame.payload.slice(0, 200) : `[binary ${frame.payload.length}B]`}`));
 });
 ```
 
-### Socket.IO pattern
+Or search the page source: `html.match(/wss?:\/\/[^\s"']+/g)`
 
-Many sites use Socket.IO which has a polling transport fallback:
+### Socket.IO protocol
+
+Many sites (Trading Economics, etc.) use Socket.IO which has a polling transport fallback you can exploit:
 
 ```js
-// Step 1: establish session via HTTP polling
-const sessionRes = await fetch(`${wsUrl}/socket.io/?EIO=4&transport=polling`, {
+// Step 1: HTTP polling handshake — get a session ID
+const handshake = await fetch(`${baseUrl}/socket.io/?EIO=4&transport=polling`, {
   headers: { "User-Agent": "Mozilla/5.0", "Origin": origin },
 });
-const sessionData = (await sessionRes.text()).replace(/^\d+/, "");
-const { sid } = JSON.parse(sessionData);
+const body = (await handshake.text()).replace(/^\d+/, "");
+const { sid } = JSON.parse(body);
 
 // Step 2: upgrade to WebSocket
 import WebSocket from "ws";
-const ws = new WebSocket(`${wsUrl.replace("https", "wss")}/socket.io/?EIO=4&transport=websocket&sid=${sid}`);
-ws.on("open", () => ws.send("2probe")); // socket.io upgrade handshake
+const ws = new WebSocket(
+  `${baseUrl.replace("https", "wss")}/socket.io/?EIO=4&transport=websocket&sid=${sid}`
+);
+
+ws.on("open", () => {
+  ws.send("2probe");  // socket.io upgrade probe
+  ws.send("5");       // upgrade confirmation
+});
+
 ws.on("message", (msg) => {
   const str = msg.toString();
+  if (str === "2") { ws.send("3"); return; }  // ping-pong heartbeat
   if (str.startsWith("42")) {
     const [event, data] = JSON.parse(str.slice(2));
-    console.log(`Event: ${event}`, data);
+    console.log(`Event "${event}":`, JSON.stringify(data).slice(0, 200));
   }
 });
 ```
 
+Socket.IO message prefixes: `0` = connect, `2` = ping, `3` = pong, `4` = message, `42` = event with data.
+
 ### Subscribing to channels
 
-Sites often require subscribing to specific channels after connecting:
+Sites require subscribing after connecting. Find channel names from:
+- `data-symbol` attributes on the page: `await page.$$eval("[data-symbol]", els => els.map(el => el.dataset.symbol))`
+- Inline JS: search for `subscribe`, `emit`, `channel`, `room`
+- The captured WebSocket frames from Step 1
 
 ```js
-// Find channel names in the page source
-const channels = html.match(/subscribe\(['"]([^'"]+)['"]\)/g);
-// Or from data-symbol attributes on the page
-const symbols = await page.$$eval("[data-symbol]", els => els.map(el => el.dataset.symbol));
-
-// Subscribe via socket.io emit
-ws.send(`42["subscribe",{"channel":"${channelName}"}]`);
+ws.send(`42["subscribe",{"channel":"commodities"}]`);
 ```
 
-## Phase 6 — GraphQL introspection
+### Binary WebSocket frames
 
-When a site uses GraphQL but disables introspection:
+Set `ws.binaryType = "arraybuffer"` before receiving. Binary frames are often protobuf — escalate to Level 8.
 
-1. Extract queries from the page source — search for `query {`, `mutation {`, `fragment ` in JS bundles
-2. Look for persisted query hashes — some sites use `extensions: { persistedQuery: { sha256Hash: "..." } }` instead of sending the full query
-3. Reconstruct the schema from captured queries + response shapes
-4. Build your own queries from the discovered fields
+### Keeping connections alive
+
+Most WebSocket servers expect periodic heartbeats. Socket.IO handles this automatically (ping every 25s by default). For raw WebSocket, send the heartbeat message at the interval specified in the handshake response.
+
+## Level 7 — GraphQL reconstruction
+
+**When**: The site hits a `/graphql` endpoint but introspection is disabled (common in production).
+
+### Extract queries from JavaScript bundles
+
+Search all JS files loaded by the page:
 
 ```js
-// Extract GraphQL queries from JS bundles
-const jsUrls = await page.$$eval("script[src]", els => els.map(el => el.src));
-for (const jsUrl of jsUrls) {
-  const js = await (await fetch(jsUrl)).text();
-  const queries = js.match(/query\s+\w+[\s\S]*?\{[\s\S]*?\}/g) || [];
-  for (const q of queries) console.log(q.slice(0, 200));
+const scripts = await page.$$eval("script[src]", els => els.map(el => el.src));
+for (const src of scripts) {
+  const js = await (await fetch(src)).text();
+  const queries = js.match(/query\s+\w+[\s\S]{10,500}?\{[\s\S]*?\}/g) || [];
+  const mutations = js.match(/mutation\s+\w+[\s\S]{10,500}?\{[\s\S]*?\}/g) || [];
+  if (queries.length || mutations.length) {
+    console.log(`${src}: ${queries.length} queries, ${mutations.length} mutations`);
+    for (const q of queries) console.log(q.slice(0, 300));
+  }
 }
 ```
 
-## Phase 7 — Mobile app API discovery
+Chrome DevTools shortcut: Sources → Search all files → `file:* query {` or `file:* mutation {`
 
-Mobile apps often hit more permissive APIs than the web:
+### Persisted queries — force full query reveal
 
-1. Use a proxy (mitmproxy, Charles) to intercept mobile traffic
-2. Or decompile the APK/IPA and search for API URLs
-3. Mobile APIs often use simpler auth (just an API key in a header) and return more data per request
+Sites using Apollo's `persistedQuery` extension only send a SHA-256 hash instead of the full query. To force the full query to appear, use mitmproxy to intercept and strip the `extensions.persistedQuery` field from the request:
 
-This is out of scope for torch's browser-based workflow, but if you have the mobile app's API documented, torch can replay it with fetch.
+```python
+# mitmproxy addon — strip persisted query to force PersistedQueryNotFound
+def request(flow):
+    if "graphql" in flow.request.url:
+        import json
+        try:
+            body = json.loads(flow.request.text)
+            if "extensions" in body and "persistedQuery" in body["extensions"]:
+                del body["extensions"]["persistedQuery"]
+                flow.request.text = json.dumps(body)
+        except: pass
+```
+
+The server responds with `PersistedQueryNotFound`, and the client retries with the **full query text as a POST body**. Capture that POST to get the complete query.
+
+Or without mitmproxy — export a HAR file from Chrome DevTools, parse it for GraphQL requests:
+
+```js
+import { readFileSync } from "fs";
+const har = JSON.parse(readFileSync("network.har", "utf8"));
+for (const entry of har.log.entries) {
+  if (entry.request.url.includes("graphql") && entry.request.postData) {
+    const body = JSON.parse(entry.request.postData.text);
+    if (body.query) console.log(body.query.slice(0, 500));
+  }
+}
+```
+
+### Schema brute-forcing (when all else fails)
+
+[InQL v6.1+](https://github.com/doyensec/inql) can reconstruct the reachable schema from error feedback alone — no introspection needed. It batches candidate field names from a wordlist, sends them as multi-field operations, and harvests error messages like `Field 'users' not found on type 'Query'` to map the schema incrementally.
+
+The [GraphQuail](https://github.com/nickreed/graphquail) Burp Suite extension builds an internal schema from every GraphQL request it observes passing through Burp, then exposes it for GraphiQL.
+
+## Level 8 — Protobuf decoding
+
+**When**: API responses or WebSocket frames contain binary data that isn't JSON, isn't compressed — it's Protocol Buffers.
+
+Protobuf is a compact binary serialization format. Without the `.proto` schema definition, messages appear as raw binary blobs.
+
+### Detecting protobuf
+
+- Response `Content-Type` contains `application/grpc`, `application/x-protobuf`, or `application/protobuf`
+- Binary WebSocket frames that aren't valid JSON or compressed data
+- The JS imports `protobufjs`, `google-protobuf`, or references `.proto` files
+
+### Decoding without the .proto file
+
+Use `protoc --decode_raw` to see the wire format:
+
+```bash
+curl -s "https://api.example.com/data" | protoc --decode_raw
+```
+
+This shows field numbers and types but not field names. Output looks like:
+```
+1: "some string"
+2: 42
+3 {
+  1: "nested"
+  2: 1234567890
+}
+```
+
+### Finding the .proto schema
+
+1. **Search JS bundles** for `.proto` file contents — protobufjs embeds the schema as JSON:
+   ```
+   file:* "fields"  (in DevTools search)
+   file:* proto3
+   file:* protobuf
+   ```
+2. **Check for source maps** — `.proto` files sometimes survive webpack bundling
+3. **Reconstruct from `--decode_raw` output** — map field numbers to likely names from the UI labels
+
+### Decoding in Node with protobufjs
+
+Once you have (or reconstruct) the schema:
+
+```js
+import protobuf from "protobufjs";
+
+const root = await protobuf.load("schema.proto");
+const MessageType = root.lookupType("package.MessageName");
+
+const buffer = await (await fetch(url)).arrayBuffer();
+const message = MessageType.decode(new Uint8Array(buffer));
+const data = MessageType.toObject(message);
+```
+
+### gRPC-Web
+
+Some sites use gRPC-Web which wraps protobuf in HTTP/2. The response has a 5-byte header (1 byte flags + 4 bytes message length) before the protobuf payload:
+
+```js
+const buf = Buffer.from(await res.arrayBuffer());
+const messageLength = buf.readUInt32BE(1);
+const protoBytes = buf.slice(5, 5 + messageLength);
+const decoded = MessageType.decode(protoBytes);
+```
 
 ## Output
 
-After reverse-engineering the API, write the findings into the site skill. The skill should document:
+After reverse engineering, document everything in the site skill. The most valuable fields:
 
-- The exact API endpoint URL(s)
-- Required headers (auth tokens, caller IDs, custom headers)
-- Request/response format (JSON, protobuf, encrypted)
-- Decryption keys and method (if encrypted), noting whether keys rotate
-- WebSocket channel names and subscription protocol (if streaming)
+- The exact API endpoint URL(s) with required query params
+- Minimum required headers (strip everything unnecessary)
+- Auth token extraction method (which location, what pattern)
+- Decryption method + key location (if encrypted), noting whether keys rotate per session
+- WebSocket endpoint + subscription protocol + channel names (if streaming)
+- GraphQL queries (full text, not just hashes)
+- Protobuf schema or `--decode_raw` field mapping (if binary)
 - Rate limits observed
-- What data is available vs what the HTML shows (APIs often return more)
+- What the API returns vs what the HTML shows (APIs often return more data)
 
-This is the most valuable part of the playbook — the next person skips the entire reverse engineering process and goes straight to calling the API.
+This documentation is the most valuable output — the next person skips the entire reverse engineering process.
+
+## References and tools
+
+| Tool | Purpose | Link |
+|---|---|---|
+| Chrome DevTools Network tab | Capture API calls | Built into Chrome |
+| API Reverse Engineer extension | Auto-capture fetch + XHR with JSON export | [GitHub](https://github.com/ctala/api-reverse-engineer) |
+| webcrack | Deobfuscate + unpack webpack bundles | [GitHub](https://github.com/j4k0xb/webcrack) |
+| wakaru | Unpack + unminify JS | [GitHub](https://github.com/nicedoc/wakaru) |
+| mitmproxy | Intercept + modify HTTP/HTTPS/WS traffic | [mitmproxy.org](https://mitmproxy.org) |
+| InQL v6.1+ | GraphQL schema brute-force from errors | [GitHub](https://github.com/doyensec/inql) |
+| GraphQuail | Build GraphQL schema from observed traffic | Burp Suite extension |
+| protoc `--decode_raw` | Decode protobuf without schema | Part of protobuf compiler |
+| protobufjs | Encode/decode protobuf in Node | [npm](https://www.npmjs.com/package/protobufjs) |
+| tweetnacl | NaCl encryption/decryption in Node | [npm](https://www.npmjs.com/package/tweetnacl) |
+| HTTPToolkit | Full API interaction recording + fuzzing | [httptoolkit.com](https://httptoolkit.com) |
+| Proxyman | HTTPS traffic capture (macOS, iOS, Flutter) | [proxyman.io](https://proxyman.io) |
+| reversing-unofficial-APIs | Curated resources for API reverse engineering | [GitHub](https://github.com/ropcat/reversing-unofficial-APIs) |
