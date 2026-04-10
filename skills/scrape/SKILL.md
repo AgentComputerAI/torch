@@ -75,52 +75,64 @@ Based on framework detected in Phase 0, use the matching strategy from `strategi
 
 Only when Phase 0-1 failed:
 
-1. **First, check `process.env.TORCH_CHROME_ENDPOINT`**. If set, use `puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT })` — this attaches to the user's real Chrome profile (cookies, history, TLS session state) and defeats most bot scoring before it starts. This is the correct default for *any* browser-based scrape, especially hard sites (Amazon, Walmart, Zillow, StockX, DataDome/PerimeterX/Akamai-protected sites).
-2. If `TORCH_CHROME_ENDPOINT` is unset, fall back to `puppeteer.launch()` with the stealth plugin (see `reference/puppeteer-boilerplate.md`). This is a disposable Chromium with zero browsing history — fine for soft targets but almost guaranteed to trip bot scoring on hard sites.
-3. Capture network traffic to discover API endpoints called during page load.
-4. If API found in traffic → replay it directly with fetch, ditch browser.
-5. Otherwise extract from rendered DOM.
+1. **First, try connecting to the real Chrome at `http://127.0.0.1:9222`** (via `puppeteer.connect`). Torch auto-launches a Chrome instance on that port at startup using a clone of the user's profile, so this attaches to a real browser with real cookies, history, and TLS session state — the single biggest anti-blocking win.
+2. If the connect throws (no Chrome running — e.g. VM or CI), check `process.env.TORCH_CAMOUFOX_ENDPOINT` and connect via `playwright-core`'s `firefox.connect(ws://...)` for the C++-level stealth fallback. See the `camoufox` skill for setup.
+3. If neither is available, fall back to `puppeteer.launch()` with the stealth plugin (`reference/puppeteer-boilerplate.md`). Disposable Chromium with zero history — fine for soft targets but almost guaranteed to trip bot scoring on hard sites.
+4. Capture network traffic to discover API endpoints called during page load.
+5. If an API shows up in traffic → replay it directly with fetch, ditch the browser.
+6. Otherwise extract from the rendered DOM.
 
 If blocked, escalate through `strategies/anti-blocking.md`. Connecting to the real Chrome profile is the single biggest anti-blocking win — a fresh Chromium with stealth is a last resort, not a starting point.
 
-#### Real-Chrome connect pattern
+#### Browser connect pattern
 
 ```js
 import puppeteer from "puppeteer-core";
 import puppeteerExtra from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
-const endpoint = process.env.TORCH_CHROME_ENDPOINT;
+const REAL_CHROME = "http://127.0.0.1:9222";
 let browser;
+let kind;
+let cleanup;
 
-if (endpoint) {
-  // Real Chrome — no stealth needed, it IS the user's browser
-  browser = await puppeteer.connect({ browserURL: endpoint });
-} else {
-  // Disposable Chromium fallback — stealth is mandatory here
-  puppeteerExtra.use(StealthPlugin());
-  browser = await puppeteerExtra.launch({
-    headless: false,
-    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-  });
+try {
+  // Tier 1 — real Chrome (cloned profile, debug port)
+  browser = await puppeteer.connect({ browserURL: REAL_CHROME });
+  kind = "real-chrome";
+  cleanup = async () => browser.disconnect(); // never close — it's the user's Chrome
+} catch {
+  if (process.env.TORCH_CAMOUFOX_ENDPOINT) {
+    // Tier 2 — Camoufox via playwright-core (VMs / headless servers)
+    const { firefox } = await import("playwright-core");
+    browser = await firefox.connect(process.env.TORCH_CAMOUFOX_ENDPOINT);
+    kind = "camoufox";
+    cleanup = async () => browser.close();
+  } else {
+    // Tier 3 — disposable Chromium + stealth (almost always detected on hard sites)
+    puppeteerExtra.use(StealthPlugin());
+    browser = await puppeteerExtra.launch({
+      headless: false,
+      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+    });
+    kind = "disposable-chromium";
+    cleanup = async () => browser.close();
+  }
 }
+
+console.log(`[torch] using ${kind}`);
 
 const page = await browser.newPage();
 try {
   await page.goto(url, { waitUntil: "networkidle2" });
   // ... scrape ...
 } finally {
-  if (endpoint) {
-    // IMPORTANT: disconnect, don't close — the user's Chrome keeps running
-    await page.close();
-    browser.disconnect();
-  } else {
-    await browser.close();
-  }
+  await page.close();
+  await cleanup();
 }
 ```
 
-The `disconnect()` vs `close()` distinction matters: `close()` would kill the user's real Chrome instance. Always `disconnect()` when `TORCH_CHROME_ENDPOINT` is set.
+The `disconnect()` vs `close()` distinction matters: `close()` would kill the user's real Chrome instance. Always `disconnect()` on the real-Chrome tier.
 
 ### Phase 3 — validate and extract
 

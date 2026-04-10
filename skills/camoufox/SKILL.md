@@ -68,12 +68,15 @@ import { chromium, firefox } from "playwright-core";
 
 async function launchBrowser() {
   // 1. Real user Chrome (best — real cookies, history, TLS reputation)
-  if (process.env.TORCH_CHROME_ENDPOINT) {
+  try {
+    const browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
     return {
-      browser: await chromium.connectOverCDP(process.env.TORCH_CHROME_ENDPOINT),
+      browser,
       kind: "real-chrome",
       cleanup: async (b) => { await b.close(); }, // disconnect only — do not kill user Chrome
     };
+  } catch {
+    // Chrome debug port not reachable — fall through
   }
 
   // 2. Camoufox (fallback — C++ stealth, works on VMs)

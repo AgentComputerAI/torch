@@ -80,13 +80,11 @@ torch will auto-clone your Chrome profile on first run (one-time, ~10-30s via rs
 
 every other scraper fights the same losing battle: launch a fresh Chromium, patch `navigator.webdriver`, rotate a fake fingerprint, and lose anyway because the site's bot scorer weighs **reputation** and **browsing history** more than any single fingerprint signal.
 
-torch flips it. on first run it **clones your actual Chrome profile** (excluding caches via rsync) into `~/.torch/chrome-profile`, then auto-launches a second Chrome instance against that clone with the debug port open. when the scrape skill needs a browser, it does:
+torch flips it. on first run it **clones your actual Chrome profile** (excluding caches via rsync) into `~/.torch/chrome-profile`, then auto-launches a second Chrome instance against that clone with the debug port open on `127.0.0.1:9222`. when the scrape skill needs a browser, it does:
 
 ```js
 import puppeteer from "puppeteer-core";
-const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT, // http://127.0.0.1:9222
-});
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 ```
 
 that browser has **your** cookies, **your** history, **your** TLS session state, **your** Client Hints. Amazon, Walmart, Target, eBay, Zillow, Booking, Airbnb, Costco — all landed on first try with this approach. no stealth patches. no solvers. no proxies.
@@ -159,7 +157,7 @@ torch does Phase 0 recon → Phase 1 framework detection → Phase 2 browser scr
 torch escalates through these layers only as far as needed. stops at the first one that works.
 
 ```
-  Layer 0  🏆  connect to real Chrome (TORCH_CHROME_ENDPOINT)
+  Layer 0  🏆  connect to real Chrome at 127.0.0.1:9222 (auto-launched cloned profile)
   Layer 1  👻  headed mode + puppeteer-extra-plugin-stealth (fallback)
   Layer 2  📋  realistic headers + randomized viewport + UA rotation
   Layer 3  🍪  cookie / session persistence across runs
@@ -185,7 +183,16 @@ drive torch from any language. stream JSONL commands on stdin, get JSONL events 
 
 see [pi-mono RPC docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/rpc.md) for the full protocol. commands: `prompt`, `steer`, `follow_up`, `abort`, `new_session`, `get_state`, `get_messages`, `set_model`, `cycle_model`, `set_thinking_level`.
 
-this is how the 29 site skills in this repo were generated — a small Node driver that spawns `torch --rpc`, sends one prompt per site, waits for `agent_end`, and moves on. 10 instances in parallel.
+this is how the 29 site skills in this repo were generated — a small Node driver that spawns `torch --rpc`, sends one prompt per site, waits for `agent_end`, and moves on. 10 instances in parallel. the driver ships with the repo at [`scripts/drive-torch.mjs`](./scripts/drive-torch.mjs):
+
+```bash
+# scrape one site, print every tool call the agent makes
+node scripts/drive-torch.mjs --verbose amazon 'scrape https://www.amazon.com/s?k=mechanical+keyboard'
+
+# parallelize with xargs
+printf '%s\n' hackernews reddit github | xargs -P 3 -I{} \
+  node scripts/drive-torch.mjs {} 'scrape https://{}.com'
+```
 
 ---
 
