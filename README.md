@@ -14,7 +14,7 @@
 [![Self-Healing](https://img.shields.io/badge/self--healing-%F0%9F%94%A5-FF2D00?style=for-the-badge)](#)
 
 ```bash
-npm i -g @agentcomputer/torch
+curl -fsSL https://raw.githubusercontent.com/AgentComputerAI/torch/main/install.sh | sh
 ```
 
 **Point it at any website. It does the rest.**
