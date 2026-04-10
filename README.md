@@ -1,0 +1,91 @@
+# Torch
+
+AI web scraping agent built on [pi-coding-agent](https://github.com/badlogic/pi-mono). Give it a URL and a description of what to extract — it handles reconnaissance, anti-bot evasion, framework detection, and data extraction autonomously.
+
+## Usage
+
+```bash
+# Interactive session
+torch
+
+# One-shot scrape
+torch https://www.digikey.com/en/products/category/microcontrollers/685 "all microcontrollers with specs and pricing"
+```
+
+## How it works
+
+1. **Reconnaissance** — curls the target, inspects headers, detects framework (Next.js, Shopify, WordPress, custom SPAs), and hunts for JSON APIs and sitemaps.
+2. **Strategy selection** — picks the lightest approach that works: JSON API → sitemap → `cheerio` → Puppeteer.
+3. **Anti-blocking** — a 9-layer escalation ladder from stealth plugin up to a real Chrome debug port and proxy rotation.
+4. **Extraction** — writes and runs a scraper, validates the output, retries on failure.
+5. **Playbook persistence** — saves what worked as a per-site skill in `skills/sites/<slug>/SKILL.md` so the next run skips recon entirely. The scrape skill also prompts users to PR new site playbooks back to torch so the whole community benefits.
+
+## Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `/scrape` | Full scraping workflow — recon, strategy, extraction, anti-blocking |
+| `/2captcha` | Solve reCAPTCHA / Turnstile / hCaptcha via 2Captcha API |
+| `/capmonster` | Solve captchas via CapMonster Cloud — cheaper AI-based alternative |
+| `/proxy` | Authenticated residential/datacenter proxy integration (Oxylabs, Bright Data, Smartproxy, IPRoyal) |
+| `/agentmail` | Disposable email for gated sites that require signup |
+| `/contributing` | How to contribute to torch |
+
+Site-specific playbooks live under `skills/sites/<slug>/SKILL.md`. Two ship by default:
+
+| Site | Difficulty | Notes |
+|------|------------|-------|
+| `doordash` | Easy | Cloudflare + SSR deals — stealth plugin clears the challenge, no captcha |
+| `nike` | Trivial (for catalog) | Skip browser, replay `api.nike.com/discover/product_wall/v1` directly |
+
+## Anti-blocking (9 layers)
+
+1. Headed mode + stealth plugin
+2. Realistic headers, randomized viewport, UA rotation
+3. Cookie / session persistence
+4. Behavioral mimicry (delays, scroll, mouse movement)
+5. Cloudflare challenge handling + Turnstile detection
+6. Real Chrome via debug port (zero automation flags)
+7. Proxy rotation
+8. Resource blocking for speed
+9. Interactive fallback — opens the site in a real browser for the user to click through
+
+## Prerequisites
+
+- **Node.js** ≥ 20
+- **AgentMail API key** (optional — only for the `/agentmail` skill)
+- **2Captcha / CapMonster API key** (optional — only when a target hits a CAPTCHA stealth mode can't bypass)
+- **Residential proxy credentials** (optional — only when a target IP-bans the scraper)
+
+## Setup
+
+```bash
+cd torch
+npm install
+npm run build
+npm install -g .      # exposes the `torch` CLI globally
+```
+
+Torch reads environment variables from `./.env`. See `.env.example` for the full list (AgentMail, 2Captcha, CapMonster, proxy credentials). Every key is optional — torch only needs what the skills you invoke require.
+
+## Architecture
+
+```
+torch <url> "what to extract"
+  │
+  └─ src/cli.ts parses args, loads .env
+       │
+       └─ Spawns pi-coding-agent with:
+            ├── SYSTEM.md          (agent identity + routing)
+            ├── skills/            (scrape, 2captcha, capmonster, proxy, agentmail, contributing)
+            │   └── sites/<slug>/  (per-site scraping playbooks)
+            ├── extensions/        (fire-themed header)
+            └── pi-processes       (background task management)
+```
+
+## Development
+
+```bash
+npm run dev           # run via tsx without building
+npm run build         # compile to ./dist
+```

@@ -1,0 +1,33 @@
+{
+  "name": "@advaitpaliwal/torch",
+  "version": "0.1.0",
+  "description": "AI web scraping agent",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "torch": "bin/torch.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/index.ts",
+    "start": "node bin/torch.js"
+  },
+  "dependencies": {
+    "@aliou/pi-processes": "^0.7.1",
+    "@mariozechner/pi-coding-agent": "^0.65.0",
+    "cheerio": "^1.2.0",
+    "lz-string": "^1.5.0",
+    "puppeteer": "^24.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-adblocker": "^2.13.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
