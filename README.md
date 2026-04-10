@@ -2,7 +2,7 @@
 
 <img src="./assets/torch-banner.svg" alt="torch" width="720" />
 
-### 🔥 *The self-healing AI scraping agent*
+### 🔥 *The self-healing AI scraping agent* 🔥
 
 **Point torch at a URL → it writes a scraper → it writes the playbook → it ships the playbook.**
 **When the site changes and the playbook breaks → torch redoes recon → updates the playbook → ships again.**
