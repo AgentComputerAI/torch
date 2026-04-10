@@ -13,6 +13,10 @@
 [![Built on pi](https://img.shields.io/badge/built%20on-pi--coding--agent-FFA500?style=for-the-badge)](https://github.com/badlogic/pi-mono)
 [![Self-Healing](https://img.shields.io/badge/self--healing-%F0%9F%94%A5-FF2D00?style=for-the-badge)](#)
 
+```bash
+npm i -g @agentcomputer/torch
+```
+
 **Point it at any website. It does the rest.**
 
 ```bash
@@ -49,6 +53,8 @@ The killer move is **playbook persistence**. Every site torch figures out become
 ---
 
 ## ⚡ Quick start
+
+Or install from source:
 
 ```bash
 git clone https://github.com/AgentComputerAI/torch
