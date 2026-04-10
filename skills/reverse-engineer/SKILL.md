@@ -141,20 +141,12 @@ This is often enough without full deobfuscation.
 
 ### Webpack unpacking
 
-Most modern sites bundle with webpack. Tools to unpack:
+Most modern sites bundle with webpack. Torch can unpack and read them:
 
-| Tool | What it does |
-|---|---|
-| [webcrack](https://github.com/j4k0xb/webcrack) | Deobfuscate obfuscator.io, unminify, unpack webpack/browserify to resemble original source |
-| [wakaru](https://github.com/pionxzh/wakaru) | Unpack + unminify bundled JS |
-| [source-map-explorer](https://www.npmjs.com/package/source-map-explorer) | If `.map` files are exposed (check `//# sourceMappingURL=`), reconstruct original files |
-| [deobfuscate.io](https://deobfuscate.io) | Online automatic JS deobfuscation |
-| Prettier / js-beautify | Reformat minified code so it's readable |
-
-```bash
-# Unpack a webpack bundle locally
-npx webcrack bundle.js -o unpacked/
-```
+1. **Check for source maps first** — look for `//# sourceMappingURL=` at the bottom of JS files. If exposed, fetch the `.map` file and reconstruct original source.
+2. **Beautify minified code** — pipe through prettier so it's readable: `npx prettier --parser babel bundle.js`
+3. **Search the beautified source** for API endpoints, keys, and crypto functions — usually enough without full deobfuscation.
+4. **If heavily obfuscated** (obfuscator.io, custom transforms), install and run a deobfuscator: `npx webcrack bundle.js -o unpacked/`
 
 ### Chrome DevTools Protocol instrumentation
 
@@ -371,41 +363,71 @@ Chrome DevTools shortcut: Sources → Search all files → `file:* query {` or `
 
 ### Persisted queries — force full query reveal
 
-Sites using Apollo's `persistedQuery` extension only send a SHA-256 hash instead of the full query. To force the full query to appear, use mitmproxy to intercept and strip the `extensions.persistedQuery` field from the request:
-
-```python
-# mitmproxy addon — strip persisted query to force PersistedQueryNotFound
-def request(flow):
-    if "graphql" in flow.request.url:
-        import json
-        try:
-            body = json.loads(flow.request.text)
-            if "extensions" in body and "persistedQuery" in body["extensions"]:
-                del body["extensions"]["persistedQuery"]
-                flow.request.text = json.dumps(body)
-        except: pass
-```
-
-The server responds with `PersistedQueryNotFound`, and the client retries with the **full query text as a POST body**. Capture that POST to get the complete query.
-
-Or without mitmproxy — export a HAR file from Chrome DevTools, parse it for GraphQL requests:
+Sites using Apollo's `persistedQuery` extension only send a SHA-256 hash instead of the full query. Torch can force the full query to appear by intercepting and stripping the persisted query extension via puppeteer's request interception:
 
 ```js
-import { readFileSync } from "fs";
-const har = JSON.parse(readFileSync("network.har", "utf8"));
-for (const entry of har.log.entries) {
-  if (entry.request.url.includes("graphql") && entry.request.postData) {
-    const body = JSON.parse(entry.request.postData.text);
-    if (body.query) console.log(body.query.slice(0, 500));
+await page.setRequestInterception(true);
+page.on("request", (req) => {
+  if (req.url().includes("graphql") && req.method() === "POST") {
+    try {
+      const body = JSON.parse(req.postData());
+      if (body.extensions?.persistedQuery) {
+        delete body.extensions.persistedQuery;
+        req.continue({ postData: JSON.stringify(body) });
+        return;
+      }
+    } catch {}
+  }
+  req.continue();
+});
+
+page.on("response", async (res) => {
+  if (res.url().includes("graphql")) {
+    const data = await res.json().catch(() => null);
+    if (data?.errors?.[0]?.message?.includes("PersistedQueryNotFound")) {
+      console.log("PersistedQueryNotFound — client will retry with full query");
+    }
+    if (data?.data) {
+      console.log("Got full query response:", JSON.stringify(data).slice(0, 500));
+    }
+  }
+});
+```
+
+The server responds with `PersistedQueryNotFound`, and the client retries with the **full query text as a POST body**. Torch captures that POST to get the complete query — no external proxy needed.
+
+### Schema brute-forcing (when all else fails)
+
+Torch can reconstruct a GraphQL schema from error feedback alone — no introspection needed. Send queries with candidate field names and parse the error messages:
+
+```js
+const endpoint = "https://example.com/graphql";
+const commonFields = ["id", "name", "email", "title", "description", "price", "url", "image", "createdAt", "updatedAt", "status", "type", "user", "users", "products", "items", "orders", "search"];
+
+for (const field of commonFields) {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: `{ ${field} }` }),
+  });
+  const data = await res.json();
+  const err = data.errors?.[0]?.message || "";
+  if (err.includes("Cannot query field")) {
+    // Field doesn't exist on Query — but the error confirms the parent type
+    continue;
+  }
+  if (err.includes("must have a selection")) {
+    // Field EXISTS but is an object type — recurse into it
+    console.log(`${field}: object type (needs subfields)`);
+  }
+  if (data.data?.[field] !== undefined) {
+    // Field exists and returned data
+    console.log(`${field}: ${JSON.stringify(data.data[field]).slice(0, 200)}`);
   }
 }
 ```
 
-### Schema brute-forcing (when all else fails)
-
-[InQL v6.1+](https://github.com/doyensec/inql) can reconstruct the reachable schema from error feedback alone — no introspection needed. It batches candidate field names from a wordlist, sends them as multi-field operations, and harvests error messages like `Field 'users' not found on type 'Query'` to map the schema incrementally.
-
-The [GraphQuail](https://github.com/nickreed/graphquail) Burp Suite extension builds an internal schema from every GraphQL request it observes passing through Burp, then exposes it for GraphiQL.
+GraphQL error suggestions are also exploitable — some servers suggest valid fields when you query an invalid one (`Did you mean 'users'?`). Parse those suggestions to discover the schema faster. If the server disables suggestions too, try common field names from the UI labels on the page.
 
 ## Level 8 — Protobuf decoding
 
@@ -490,20 +512,13 @@ After reverse engineering, document everything in the site skill. The most valua
 
 This documentation is the most valuable output — the next person skips the entire reverse engineering process.
 
-## References and tools
+## npm packages torch can install on demand
 
-| Tool | Purpose | Link |
-|---|---|---|
-| Chrome DevTools Network tab | Capture API calls | Built into Chrome |
-| API Reverse Engineer extension | Auto-capture fetch + XHR with JSON export | [GitHub](https://github.com/ctala/api-reverse-engineer) |
-| webcrack | Deobfuscate + unpack webpack bundles | [GitHub](https://github.com/j4k0xb/webcrack) |
-| wakaru | Unpack + unminify JS | [GitHub](https://github.com/nicedoc/wakaru) |
-| mitmproxy | Intercept + modify HTTP/HTTPS/WS traffic | [mitmproxy.org](https://mitmproxy.org) |
-| InQL v6.1+ | GraphQL schema brute-force from errors | [GitHub](https://github.com/doyensec/inql) |
-| GraphQuail | Build GraphQL schema from observed traffic | Burp Suite extension |
-| protoc `--decode_raw` | Decode protobuf without schema | Part of protobuf compiler |
-| protobufjs | Encode/decode protobuf in Node | [npm](https://www.npmjs.com/package/protobufjs) |
-| tweetnacl | NaCl encryption/decryption in Node | [npm](https://www.npmjs.com/package/tweetnacl) |
-| HTTPToolkit | Full API interaction recording + fuzzing | [httptoolkit.com](https://httptoolkit.com) |
-| Proxyman | HTTPS traffic capture (macOS, iOS, Flutter) | [proxyman.io](https://proxyman.io) |
-| reversing-unofficial-APIs | Curated resources for API reverse engineering | [GitHub](https://github.com/ropcat/reversing-unofficial-APIs) |
+These are Node libraries the agent installs via `npm install` when a specific level requires them. They're not external tools — they're dependencies torch uses in the scraper scripts it writes.
+
+| Package | When needed |
+|---|---|
+| `tweetnacl` | Level 5 — NaCl `crypto_secretbox` decryption |
+| `pako` | Level 5 — zlib/deflate decompression after decryption |
+| `protobufjs` | Level 8 — protobuf encode/decode |
+| `ws` | Level 6 — raw WebSocket client (when not using puppeteer's built-in WS capture) |
