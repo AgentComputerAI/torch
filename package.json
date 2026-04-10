@@ -1,9 +1,19 @@
 {
   "name": "@agentcomputer/torch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The self-healing AI scraping agent",
   "license": "MIT",
   "type": "module",
+  "files": [
+    "bin",
+    "dist",
+    "extensions",
+    "skills",
+    "scripts",
+    "SYSTEM.md",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -20,6 +30,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "dev": "tsx src/index.ts",
     "start": "node bin/torch.js"
   },
