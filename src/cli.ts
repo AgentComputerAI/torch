@@ -393,6 +393,9 @@ export async function main(): Promise<void> {
       PI_HARDWARE_CURSOR: process.env.PI_HARDWARE_CURSOR ?? "1",
       PI_SKIP_VERSION_CHECK: "1",
       ...(chromeEndpoint ? { TORCH_CHROME_ENDPOINT: chromeEndpoint } : {}),
+      ...(process.env.TORCH_CAMOUFOX_ENDPOINT
+        ? { TORCH_CAMOUFOX_ENDPOINT: process.env.TORCH_CAMOUFOX_ENDPOINT }
+        : {}),
     },
   });
 
