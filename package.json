@@ -1,9 +1,17 @@
 {
-  "name": "@advaitpaliwal/torch",
+  "name": "@agentcomputer/torch",
   "version": "0.1.0",
-  "description": "AI web scraping agent",
+  "description": "The self-healing AI scraping agent",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentComputerAI/torch.git"
+  },
+  "homepage": "https://github.com/AgentComputerAI/torch",
   "engines": {
     "node": ">=20.0.0"
   },
