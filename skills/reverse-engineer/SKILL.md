@@ -74,9 +74,42 @@ page.on("request", (req) => {
 
 **Tools**: Chrome DevTools Network tab, [API Reverse Engineer extension](https://github.com/ctala/api-reverse-engineer) (intercepts both fetch and XHR, exports JSON with every unique endpoint).
 
+## Level 1.5 — Classify the response before parsing
+
+Before trying to parse an API response, measure its Shannon entropy to instantly know what you're dealing with:
+
+```js
+function shannonEntropy(buf) {
+  const freq = new Map();
+  for (const b of buf) freq.set(b, (freq.get(b) || 0) + 1);
+  let entropy = 0;
+  for (const count of freq.values()) {
+    const p = count / buf.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+const res = await fetch(apiUrl);
+const buf = new Uint8Array(await res.arrayBuffer());
+const e = shannonEntropy(buf);
+
+if (e < 6.0) console.log("Plaintext — parse as JSON/XML/HTML");
+else if (e < 7.5) console.log("Compressed — try zlib.inflate or gzip");
+else console.log("Encrypted — need to find decryption keys (Level 5)");
+```
+
+| Entropy | Meaning | Action |
+|---|---|---|
+| < 6.0 | Plaintext (JSON, XML, HTML, CSV) | Parse directly |
+| 6.0 – 7.5 | Compressed (gzip, zlib, brotli) | Decompress then parse |
+| > 7.5 | Encrypted or random | Escalate to Level 5 |
+
+This saves time — don't waste 20 minutes trying to decrypt something that's just gzipped.
+
 ## Level 2 — API replay
 
-**When**: Level 1 found the data endpoint and it returns readable JSON.
+**When**: Level 1 found the data endpoint and it returns readable JSON (or you decompressed it and it's readable).
 
 Strip the captured request down to the minimum headers that work:
 
@@ -94,7 +127,38 @@ const data = await res.json();
 
 Most internal APIs need fewer headers than the browser sends. Remove headers one at a time until you find the minimum set. Common essentials: `User-Agent`, `Referer`, `Origin`, and sometimes a custom caller-ID header (like Nike's `nike-api-caller-id`).
 
-**If the API returns 401/403**: you need auth tokens → escalate to Level 3.
+**If the API returns 401/403**: try these quick bypass tricks before escalating:
+
+```js
+const bypasses = [
+  url,                          // original
+  url + ".json",                // append .json
+  url + "/",                    // trailing slash
+  url + "%20",                  // URL-encoded space
+  url + "#",                    // fragment
+  url + "..;/",                 // path traversal normalize
+  url.replace("/v2/", "/v1/"),  // downgrade API version
+  url.replace("/v1/", "/v2/"),  // upgrade API version
+];
+
+for (const bypass of bypasses) {
+  const res = await fetch(bypass, { headers, method: "GET" });
+  if (res.ok) { console.log(`Bypass worked: ${bypass}`); break; }
+}
+
+// Also try different HTTP methods — some endpoints allow GET but block POST, or vice versa
+for (const method of ["GET", "POST", "PUT", "OPTIONS"]) {
+  const res = await fetch(url, { headers, method });
+  if (res.ok) { console.log(`Method ${method} works`); break; }
+}
+```
+
+Also check archive.org for historical snapshots of the API docs — sites sometimes had public Swagger/OpenAPI specs that have since been removed:
+```js
+const archiveUrl = `https://web.archive.org/web/2024*/https://api.example.com/swagger.json`;
+```
+
+If none of that works: escalate to Level 3 for token extraction.
 
 **If the response is encrypted or binary**: escalate to Level 5 (encryption) or Level 8 (protobuf).
 
