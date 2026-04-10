@@ -17,7 +17,7 @@ Use this skill when:
 - You need `cf_clearance` cookies for Cloudflare Challenge pages (CapMonster has a dedicated task type for this)
 - 2Captcha returns `ERROR_CAPTCHA_UNSOLVABLE` — try CapMonster as fallback
 
-For the 2Captcha equivalent, see `/2captcha`. The task shape is similar but the client API is different.
+For the 2Captcha equivalent, see `2captcha`. The task shape is similar but the client API is different.
 
 ## Installation
 

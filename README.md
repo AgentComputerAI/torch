@@ -95,7 +95,7 @@ that browser has **your** cookies, **your** history, **your** TLS session state,
 
 the real-Chrome-clone trick obviously can't work if there's no host Chrome to clone — VMs, CI boxes, remote scraping pods, Docker containers, anything without a logged-in user profile. on those machines torch falls back through two cheaper tiers:
 
-1. **Camoufox** (if `TORCH_CAMOUFOX_ENDPOINT` is set) — a Firefox fork with fingerprint spoofing patched into the engine at the **C++ level**. unlike puppeteer-stealth's JS shims, Camoufox's patches are invisible to JavaScript, so anti-bot systems can't detect the tampering itself. includes a built-in virtual display so it runs headfully on headless servers without xvfb. see the [`/camoufox`](./skills/camoufox/SKILL.md) skill for the full integration playbook.
+1. **Camoufox** (if `TORCH_CAMOUFOX_ENDPOINT` is set) — a Firefox fork with fingerprint spoofing patched into the engine at the **C++ level**. unlike puppeteer-stealth's JS shims, Camoufox's patches are invisible to JavaScript, so anti-bot systems can't detect the tampering itself. includes a built-in virtual display so it runs headfully on headless servers without xvfb. see the [`camoufox`](./skills/camoufox/SKILL.md) skill for the full integration playbook.
 
    ```bash
    # on your VM / CI base image, install once:
@@ -121,13 +121,13 @@ torch is built on [pi-coding-agent](https://github.com/badlogic/pi-mono)'s skill
 
 | skill | what it does |
 |---|---|
-| 🕷️ **`/scrape`** | the full scraping workflow — recon, strategy, extraction, anti-blocking, playbook authoring |
-| 🦊 **`/camoufox`** | Firefox fork with C++-level fingerprint spoofing — use on VMs / CI where real-Chrome-clone can't run |
-| 🤖 **`/2captcha`** | solve reCAPTCHA v2/v3, Turnstile, hCaptcha via the 2Captcha API (human workers, ~$1/1k) |
-| 🧠 **`/capmonster`** | cheaper AI-based solver with `cf_clearance` support (~$0.60/1k) |
-| 🌐 **`/proxy`** | authenticated residential proxy integration — Oxylabs, Bright Data, Smartproxy, IPRoyal |
-| 📬 **`/agentmail`** | disposable email inboxes for gated signup flows |
-| 🤝 **`/contributing`** | PR workflow + quality bar for sharing new site skills upstream |
+| 🕷️ **`scrape`** | the full scraping workflow — recon, strategy, extraction, anti-blocking, playbook authoring |
+| 🦊 **`camoufox`** | Firefox fork with C++-level fingerprint spoofing — use on VMs / CI where real-Chrome-clone can't run |
+| 🤖 **`2captcha`** | solve reCAPTCHA v2/v3, Turnstile, hCaptcha via the 2Captcha API (human workers, ~$1/1k) |
+| 🧠 **`capmonster`** | cheaper AI-based solver with `cf_clearance` support (~$0.60/1k) |
+| 🌐 **`proxy`** | authenticated residential proxy integration — Oxylabs, Bright Data, Smartproxy, IPRoyal |
+| 📬 **`agentmail`** | disposable email inboxes for gated signup flows |
+| 🤝 **`contributing`** | PR workflow + quality bar for sharing new site skills upstream |
 
 ### site skills — 29 shipped by default
 
@@ -165,8 +165,8 @@ torch escalates through these layers only as far as needed. stops at the first o
   Layer 3  🍪  cookie / session persistence across runs
   Layer 4  🐁  behavioral mimicry (delays, scroll, mouse jitter)
   Layer 5  ☁️   Cloudflare challenge handling + Turnstile detection
-  Layer 6  🤖  /2captcha or /capmonster solver invocation
-  Layer 7  🌐  residential proxy rotation via /proxy
+  Layer 6  🤖  2captcha or capmonster solver invocation
+  Layer 7  🌐  residential proxy rotation via proxy
   Layer 8  ⚡  resource blocking (images/css/fonts) for speed
   Layer 9  👨‍💻  interactive fallback — opens site in your browser for manual click-through
 ```
@@ -193,7 +193,7 @@ this is how the 29 site skills in this repo were generated — a small Node driv
 
 | required | optional |
 |---|---|
-| **Node.js ≥ 20** | **AgentMail API key** — only for `/agentmail` (gated signups) |
+| **Node.js ≥ 20** | **AgentMail API key** — only for `agentmail` (gated signups) |
 | **Google Chrome** (for real-profile scraping) | **2Captcha / CapMonster key** — only when a target hits a captcha |
 | **Anthropic / OpenAI API key** (for the agent brain) | **Residential proxy creds** — only when IP-banned |
 

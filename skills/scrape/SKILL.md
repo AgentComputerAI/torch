@@ -153,7 +153,7 @@ All pre-installed: puppeteer-extra, stealth plugin, adblocker plugin, cheerio. U
 
 ## Authentication
 
-If a site requires login or rate-limits anonymous requests, use the /agentmail skill to create a disposable email inbox for signups. Authenticated sessions often bypass rate limits and unlock more data.
+If a site requires login or rate-limits anonymous requests, use the agentmail skill to create a disposable email inbox for signups. Authenticated sessions often bypass rate limits and unlock more data.
 
 ## Implementation rules
 
@@ -237,4 +237,4 @@ Existing examples: see `skills/sites/doordash/SKILL.md` (SSR + Cloudflare) and `
 
 ### Share it upstream
 
-If the site didn't already have a skill before this run, **open a pull request adding `skills/sites/<slug>/SKILL.md` to `github.com/agentcomputer/torch`** so the next person scraping that site inherits the playbook instead of re-running recon. One site per PR. Tell the user once you've saved the skill locally that they should open the PR — see `/contributing` for the general PR workflow and quality bar.
+If the site didn't already have a skill before this run, **open a pull request adding `skills/sites/<slug>/SKILL.md` to `github.com/agentcomputer/torch`** so the next person scraping that site inherits the playbook instead of re-running recon. One site per PR. Tell the user once you've saved the skill locally that they should open the PR — see `contributing` for the general PR workflow and quality bar.

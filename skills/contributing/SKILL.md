@@ -57,7 +57,7 @@ Skill content is just markdown after the frontmatter. Structure it however makes
 - **Dense with specifics.** Every code snippet is copy-pasteable. Every claim is verifiable.
 - **Lead with the gate.** First paragraph tells the reader whether this skill applies to their situation.
 - **Include what doesn't work.** A "Do NOT do X — here's why" note is worth a page of happy-path docs.
-- **Comparable surfaces.** If there are alternatives (e.g. `/2captcha` vs `/capmonster`), reference them explicitly.
+- **Comparable surfaces.** If there are alternatives (e.g. `2captcha` vs `capmonster`), reference them explicitly.
 
 ### Directory layout
 
@@ -127,7 +127,7 @@ Don't rewrite a skill you didn't author without understanding *why* it's written
 ## What NOT to contribute
 
 - Skills for sites you only scraped once and can't reproduce
-- Skills that wrap paid third-party APIs you don't disclose (unless the skill is *about* that API, like `/2captcha`)
+- Skills that wrap paid third-party APIs you don't disclose (unless the skill is *about* that API, like `2captcha`)
 - Code changes that introduce new top-level dependencies without discussion — open an issue first
 - Documentation for features that don't exist yet ("speculative docs")
 - Anything whose sole purpose is to evade detection on sites you don't have permission to scrape

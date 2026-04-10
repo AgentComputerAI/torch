@@ -128,7 +128,7 @@ Quirks observed in the wild:
 | 8 Rate limiting            | ⚠️      | Be polite — 1 req/sec is plenty |
 | 9 API replay               | ❌      | `__NEXT_DATA__` is enough; don't bother |
 
-If the user's Chrome isn't available, escalate to: puppeteer-extra + stealth + headful + residential proxy (Layer 6). Expect PX captchas on the search endpoint when launching a fresh Chromium — solve via /2captcha (PerimeterX template) if you must.
+If the user's Chrome isn't available, escalate to: puppeteer-extra + stealth + headful + residential proxy (Layer 6). Expect PX captchas on the search endpoint when launching a fresh Chromium — solve via 2captcha (PerimeterX template) if you must.
 
 ## Data shape
 

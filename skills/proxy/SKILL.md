@@ -8,7 +8,7 @@ metadata:
 
 # Proxy integration
 
-Proxies are anti-blocking Layer 7 — escalate to them when IP-based blocking is the problem (403/429 on your datacenter IP, rate limits hit fast, geo-blocked content). They don't help with browser fingerprinting or JavaScript challenges — combine with stealth mode (`/scrape` anti-blocking) and CAPTCHA solvers (`/2captcha`, `/capmonster`) as needed.
+Proxies are anti-blocking Layer 7 — escalate to them when IP-based blocking is the problem (403/429 on your datacenter IP, rate limits hit fast, geo-blocked content). They don't help with browser fingerprinting or JavaScript challenges — combine with stealth mode (`scrape` anti-blocking) and CAPTCHA solvers (`2captcha`, `capmonster`) as needed.
 
 ## When to use a proxy
 
@@ -18,7 +18,7 @@ Proxies are anti-blocking Layer 7 — escalate to them when IP-based blocking is
 | 429 after 5-20 requests | Rate limit per IP | Rotating residential, one IP per request |
 | "Not available in your country" | Geo-block | Country-specific exit node |
 | Instant Turnstile / JS challenge | Fingerprinting, NOT IP | Don't use proxy — use stealth + solver |
-| CAPTCHA appears | Behavior detection | Solver, not proxy (see `/2captcha`) |
+| CAPTCHA appears | Behavior detection | Solver, not proxy (see `2captcha`) |
 
 Residential proxies cost money — don't reach for them before trying headed stealth mode and cookie persistence.
 
@@ -289,5 +289,5 @@ await proxyChain.closeAnonymizedProxy(anonymized, true);
 ## When NOT to use a proxy
 
 - Simple public sites that respond fine to stealth + headed mode — don't burn GB
-- When the block is a CAPTCHA, not an IP ban (proxies don't solve CAPTCHAs — see `/2captcha` or `/capmonster`)
+- When the block is a CAPTCHA, not an IP ban (proxies don't solve CAPTCHAs — see `2captcha` or `capmonster`)
 - When the target uses client-side fingerprinting (canvas, WebGL, audio) — a proxy changes only your IP, not your fingerprint. Fix fingerprinting first via stealth plugin.

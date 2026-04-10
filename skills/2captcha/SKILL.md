@@ -17,7 +17,7 @@ Use this skill when:
 - hCaptcha, Geetest, FunCaptcha appear on signup/login pages
 - You need image-text OCR fallback
 
-For cheaper pricing (~$0.60/1K vs $1.00/1K) and faster solves, also check `/capmonster` — the APIs are similar enough to swap providers.
+For cheaper pricing (~$0.60/1K vs $1.00/1K) and faster solves, also check `capmonster` — the APIs are similar enough to swap providers.
 
 ## Installation
 
@@ -247,5 +247,5 @@ Tokens expire ~2 minutes after issue — use them immediately, don't cache.
 ## When NOT to use 2Captcha
 
 - If plain stealth + headed mode works, skip the solver (don't pay for something you don't need)
-- For sites using JavaScript-only fingerprinting (no CAPTCHA widget), a solver doesn't help — escalate to real Chrome via debug port (Layer 6) or residential proxies (Layer 7, see `/proxy`)
+- For sites using JavaScript-only fingerprinting (no CAPTCHA widget), a solver doesn't help — escalate to real Chrome via debug port (Layer 6) or residential proxies (Layer 7, see `proxy`)
 - For hCaptcha specifically, 2Captcha accuracy dropped in late 2025 — prefer CapMonster or CapSolver

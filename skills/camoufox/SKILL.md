@@ -152,6 +152,6 @@ This is the killer feature for VM/CI usage. The "headless: false" requirement th
 
 ## Related skills
 
-- `/scrape` — the main scraping workflow. Its "Phase 2 browser" section checks for `TORCH_CAMOUFOX_ENDPOINT` as the second-choice backend after `TORCH_CHROME_ENDPOINT`.
-- `/proxy` — combine Camoufox with residential proxies when even C++-level stealth isn't enough. Camoufox supports proxies natively via `--proxy` launch args or per-context config.
-- `/2captcha`, `/capmonster` — Camoufox can hit captchas too (behavioral detection is orthogonal to fingerprinting). Same solver APIs apply.
+- `scrape` — the main scraping workflow. Its "Phase 2 browser" section checks for `TORCH_CAMOUFOX_ENDPOINT` as the second-choice backend after `TORCH_CHROME_ENDPOINT`.
+- `proxy` — combine Camoufox with residential proxies when even C++-level stealth isn't enough. Camoufox supports proxies natively via `--proxy` launch args or per-context config.
+- `2captcha`, `capmonster` — Camoufox can hit captchas too (behavioral detection is orthogonal to fingerprinting). Same solver APIs apply.

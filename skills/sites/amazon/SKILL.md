@@ -119,7 +119,7 @@ Expect ~22 result cards per page. Sponsored-slot `link` values are `/sspa/click?
 | 5. CAPTCHA solver | ❌ | Never saw a captcha in this run. |
 | 6. Residential proxy | ❌ | Real Chrome's existing session on a home IP was enough. |
 
-If you ever *do* land on Robot Check (e.g. after hammering from a datacenter IP): slow down, randomize page intervals to 2–5s, and as a last resort route through the /proxy skill with a US residential exit. Don't bother with 2captcha unless you see an actual captcha form.
+If you ever *do* land on Robot Check (e.g. after hammering from a datacenter IP): slow down, randomize page intervals to 2–5s, and as a last resort route through the proxy skill with a US residential exit. Don't bother with 2captcha unless you see an actual captcha form.
 
 ## Data shape
 
