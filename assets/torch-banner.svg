@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 230" width="780" height="230">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .t {
+        font-family: "SF Mono", "Menlo", "Consolas", "Liberation Mono", "Courier New", monospace;
+        font-size: 28px;
+        font-weight: bold;
+      }
+    </style>
+  </defs>
+  <text x="20" y="38"  class="t" xml:space="preserve" fill="#FFDC50" filter="url(#glow)">████████╗ ██████╗ ██████╗  ██████╗██╗  ██╗</text>
+  <text x="20" y="70"  class="t" xml:space="preserve" fill="#FFDC50" filter="url(#glow)">╚══██╔══╝██╔═══██╗██╔══██╗██╔════╝██║  ██║</text>
+  <text x="20" y="102" class="t" xml:space="preserve" fill="#FFA014" filter="url(#glow)">   ██║   ██║   ██║██████╔╝██║     ███████║</text>
+  <text x="20" y="134" class="t" xml:space="preserve" fill="#FFA014" filter="url(#glow)">   ██║   ██║   ██║██╔══██╗██║     ██╔══██║</text>
+  <text x="20" y="166" class="t" xml:space="preserve" fill="#FF6400" filter="url(#glow)">   ██║   ╚██████╔╝██║  ██║╚██████╗██║  ██║</text>
+  <text x="20" y="198" class="t" xml:space="preserve" fill="#C83C00" filter="url(#glow)">   ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝</text>
+</svg>

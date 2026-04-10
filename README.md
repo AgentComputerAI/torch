@@ -1,23 +1,17 @@
 <div align="center">
 
-```
-  ████████╗ ██████╗ ██████╗  ██████╗██╗  ██╗
-  ╚══██╔══╝██╔═══██╗██╔══██╗██╔════╝██║  ██║
-     ██║   ██║   ██║██████╔╝██║     ███████║
-     ██║   ██║   ██║██╔══██╗██║     ██╔══██║
-     ██║   ╚██████╔╝██║  ██║╚██████╗██║  ██║
-     ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
-```
+<img src="./assets/torch-banner.svg" alt="torch" width="720" />
 
-# 🔥 torch
+### 🔥 *the self-healing AI scraping agent*
 
-### *the AI scraping agent that figures sites out so you don't have to*
+**point torch at a URL → it writes a scraper → it writes the playbook → it ships the playbook.**
+**when the site changes and the playbook breaks → torch redoes recon → updates the playbook → ships again.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-FF8C00?style=for-the-badge)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-FF6B00?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Site Skills](https://img.shields.io/badge/site%20skills-29-FF4500?style=for-the-badge)](./skills/sites)
 [![Built on pi](https://img.shields.io/badge/built%20on-pi--coding--agent-FFA500?style=for-the-badge)](https://github.com/badlogic/pi-mono)
-[![Self-Propagating](https://img.shields.io/badge/self--propagating-%F0%9F%94%A5-FF2D00?style=for-the-badge)](#)
+[![Self-Healing](https://img.shields.io/badge/self--healing-%F0%9F%94%A5-FF2D00?style=for-the-badge)](#)
 
 **point it at any website. it does the rest.**
 
@@ -97,6 +91,26 @@ const browser = await puppeteer.connect({
 
 that browser has **your** cookies, **your** history, **your** TLS session state, **your** Client Hints. Amazon, Walmart, Target, eBay, Zillow, Booking, Airbnb, Costco — all landed on first try with this approach. no stealth patches. no solvers. no proxies.
 
+## 🖥️ running on a VM / headless server
+
+the real-Chrome-clone trick obviously can't work if there's no host Chrome to clone — VMs, CI boxes, remote scraping pods, Docker containers, anything without a logged-in user profile. on those machines torch falls back through two cheaper tiers:
+
+1. **Camoufox** (if `TORCH_CAMOUFOX_ENDPOINT` is set) — a Firefox fork with fingerprint spoofing patched into the engine at the **C++ level**. unlike puppeteer-stealth's JS shims, Camoufox's patches are invisible to JavaScript, so anti-bot systems can't detect the tampering itself. includes a built-in virtual display so it runs headfully on headless servers without xvfb. see the [`/camoufox`](./skills/camoufox/SKILL.md) skill for the full integration playbook.
+
+   ```bash
+   # on your VM / CI base image, install once:
+   pip install camoufox[geoip] && python -m camoufox fetch
+   npm install playwright-core
+
+   # launch as a Playwright server torch connects to
+   python -m camoufox server --port 4444 &
+   echo "TORCH_CAMOUFOX_ENDPOINT=ws://127.0.0.1:4444" >> .env
+   ```
+
+2. **Disposable Chromium + puppeteer-extra-stealth** (no env var set, last-resort fallback) — bundled with torch by default, works for soft targets, gets blocked on anything with serious bot scoring. this is where the 9-layer anti-blocking ladder exists to fight its way through.
+
+on your own laptop, real-Chrome-clone is the right answer and torch defaults to it. on a VM, install Camoufox and torch will transparently route browser scrapes through it instead.
+
 ---
 
 ## 🔧 skills
@@ -108,6 +122,7 @@ torch is built on [pi-coding-agent](https://github.com/badlogic/pi-mono)'s skill
 | skill | what it does |
 |---|---|
 | 🕷️ **`/scrape`** | the full scraping workflow — recon, strategy, extraction, anti-blocking, playbook authoring |
+| 🦊 **`/camoufox`** | Firefox fork with C++-level fingerprint spoofing — use on VMs / CI where real-Chrome-clone can't run |
 | 🤖 **`/2captcha`** | solve reCAPTCHA v2/v3, Turnstile, hCaptcha via the 2Captcha API (human workers, ~$1/1k) |
 | 🧠 **`/capmonster`** | cheaper AI-based solver with `cf_clearance` support (~$0.60/1k) |
 | 🌐 **`/proxy`** | authenticated residential proxy integration — Oxylabs, Bright Data, Smartproxy, IPRoyal |
@@ -230,9 +245,10 @@ MIT. see [LICENSE](./LICENSE). built on [pi-coding-agent](https://github.com/bad
 
 <div align="center">
 
-**🔥 self-propagating scraping knowledge. 🔥**
+### 🔥 *self-healing. self-propagating. self-improving.* 🔥
 
-*every site someone figures out becomes a skill the whole community inherits.*
+**every site anyone figures out becomes a skill the whole community inherits.**
+**every broken playbook auto-repairs itself on the next run.**
 
 *contribute back at [github.com/AgentComputerAI/torch](https://github.com/AgentComputerAI/torch)*
 
