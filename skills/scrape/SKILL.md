@@ -71,16 +71,23 @@ Based on framework detected in Phase 0, use the matching strategy from `strategi
 
 **Gate B**: Clean API or JSON data source found → skip browser, go to Phase 3.
 
+### Phase 1.5 — API reverse engineering (before reaching for a browser)
+
+If Phase 0-1 found hints of an API (XHR URLs in the source, `/api/` or `/graphql` endpoints, CloudFront domains, WebSocket URLs) but the responses are encrypted, signed, or behind auth — read the `reverse-engineer` skill and work through its levels. Often you can replay the API directly with `fetch` once you extract the right headers/tokens, completely skipping the browser.
+
+**This is almost always faster than browser scraping.** A `fetch` call takes 50ms. A Puppeteer page load takes 3-10 seconds. If the data exists behind an API, reverse-engineering that API is the right move even if it takes 10 minutes of investigation — the resulting scraper will be 100x faster and more reliable than a DOM-based one.
+
+**Gate B.5**: API replayed successfully with `fetch` → skip browser entirely, go to Phase 3.
+
 ### Phase 2 — browser scraping (last resort)
 
-Only when Phase 0-1 failed:
+Only when Phase 0-1.5 failed or when the site genuinely renders data client-side with no API:
 
 1. **First, try connecting to the real Chrome at `http://127.0.0.1:9222`** (via `puppeteer.connect`). Torch auto-launches a Chrome instance on that port at startup using a clone of the user's profile, so this attaches to a real browser with real cookies, history, and TLS session state — the single biggest anti-blocking win.
 2. If the connect throws (no Chrome running — e.g. VM or CI), check `process.env.TORCH_CAMOUFOX_ENDPOINT` and connect via `playwright-core`'s `firefox.connect(ws://...)` for the C++-level stealth fallback. See the `camoufox` skill for setup.
 3. If neither is available, fall back to `puppeteer.launch()` with the stealth plugin (`reference/puppeteer-boilerplate.md`). Disposable Chromium with zero history — fine for soft targets but almost guaranteed to trip bot scoring on hard sites.
-4. Capture network traffic to discover API endpoints called during page load.
-5. If an API shows up in traffic → replay it directly with fetch, ditch the browser.
-6. Otherwise extract from the rendered DOM.
+4. **Capture network traffic** to discover API endpoints called during page load — then switch BACK to the `reverse-engineer` skill to replay those APIs directly. The browser was just a recon tool; the actual scraper should use `fetch` against the discovered API whenever possible.
+5. If no API found in traffic → extract from the rendered DOM as a last resort.
 
 If blocked, escalate through `strategies/anti-blocking.md`. Connecting to the real Chrome profile is the single biggest anti-blocking win — a fresh Chromium with stealth is a last resort, not a starting point.
 
@@ -145,12 +152,12 @@ The `disconnect()` vs `close()` distinction matters: `close()` would kill the us
 ## Strategy priority
 
 ```
-JSON API / data blob → Sitemap + fetch → Cheerio (static HTML) →
-  Puppeteer.connect() to real Chrome (TORCH_CHROME_ENDPOINT) →
-  Puppeteer.launch() disposable Chromium with stealth (fallback only)
+JSON API (public or reverse-engineered) → Sitemap + fetch → Cheerio (static HTML) →
+  Browser as recon tool (capture API calls, then replay with fetch) →
+  Browser for DOM extraction (true last resort)
 ```
 
-Always prefer the cheapest strategy that returns the data. Escalate one step at a time — don't jump straight to a browser if cheerio works, and don't launch a fresh Chromium if the user has a real Chrome debug endpoint available.
+APIs are always the best scraping strategy — faster, more reliable, return more data, and don't trigger bot detection. If the API is hidden or encrypted, the `reverse-engineer` skill's 9-level ladder handles the discovery. A browser should be a recon tool for finding the API, not the extraction tool itself.
 
 ## Pagination
 
