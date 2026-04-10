@@ -31,13 +31,13 @@ Work through these layers in order. Stop when unblocked.
 
 ### Layer 0: connect to the user's real Chrome (try first if available)
 
-If `process.env.TORCH_CHROME_ENDPOINT` is set, torch detected a Chrome instance running with `--remote-debugging-port=9222`. Attach to it:
+Torch auto-launches Chrome with `--remote-debugging-port=9222` on startup using a clone of your profile. Connect to it:
 
 ```js
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT,
+  browserURL: "http://127.0.0.1:9222",
 });
 
 const page = await browser.newPage();
@@ -58,7 +58,7 @@ This uses the user's real browser profile — real cookies, real history, real T
   --user-data-dir="$HOME/Library/Application Support/Google/Chrome"
 ```
 
-Torch detects this automatically on startup and sets `TORCH_CHROME_ENDPOINT` for you.
+Torch does this automatically on startup — clones your profile, launches Chrome, and makes `127.0.0.1:9222` available.
 
 **Limitations**:
 - The user has to launch Chrome with the debug flag — torch can't do it without conflicting with their existing Chrome session

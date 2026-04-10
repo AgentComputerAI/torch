@@ -185,7 +185,7 @@ If a site requires login or rate-limits anonymous requests, use the agentmail sk
 - Navigation timeout: 30s
 - Retry failed requests up to 3 times with exponential backoff
 - Save partial data if full scrape fails
-- Always close browser in a finally block (or `disconnect()` if using `TORCH_CHROME_ENDPOINT`)
+- Always close browser in a finally block (or `disconnect()` if using `127.0.0.1:9222`)
 
 ## Cleanup before writing the skill
 

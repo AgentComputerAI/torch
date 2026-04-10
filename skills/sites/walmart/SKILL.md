@@ -1,6 +1,6 @@
 ---
 name: walmart
-description: Proven scraping playbook for walmart.com. Next.js SPA behind Akamai Bot Manager — curl is 307-redirected to /blocked, but a puppeteer connection to the user's real Chrome (`TORCH_CHROME_ENDPOINT`) walks straight through with zero challenges. All product data is embedded in `__NEXT_DATA__`; no API replay needed. Activate for any walmart.com search, browse, or PDP scrape.
+description: Proven scraping playbook for walmart.com. Next.js SPA behind Akamai Bot Manager — curl is 307-redirected to /blocked, but a puppeteer connection to the user's real Chrome (`127.0.0.1:9222`) walks straight through with zero challenges. All product data is embedded in `__NEXT_DATA__`; no API replay needed. Activate for any walmart.com search, browse, or PDP scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Walmart (walmart.com)
 
-> Walmart is a Next.js storefront fronted by Akamai Bot Manager. Anonymous curl/fetch is hard-blocked (307 → `/blocked?url=...&uuid=...`), and a fresh Chromium — even with stealth — gets served interstitials and challenge pages. The single thing that makes it trivial is `TORCH_CHROME_ENDPOINT`: connect to the user's real Chrome and Walmart treats you like a normal shopper. All listing data hydrates from an embedded `__NEXT_DATA__` JSON blob, so you don't need to reverse any internal APIs.
+> Walmart is a Next.js storefront fronted by Akamai Bot Manager. Anonymous curl/fetch is hard-blocked (307 → `/blocked?url=...&uuid=...`), and a fresh Chromium — even with stealth — gets served interstitials and challenge pages. The single thing that makes it trivial is `127.0.0.1:9222`: connect to the user's real Chrome and Walmart treats you like a normal shopper. All listing data hydrates from an embedded `__NEXT_DATA__` JSON blob, so you don't need to reverse any internal APIs.
 
 ## Detection
 
@@ -41,7 +41,7 @@ Seeing any of `/blocked?`, `_pxhd`, or the string "Robot or human" in the body m
 
 - **Phase 0 (curl):** 307 → `/blocked`. Skipped.
 - **Phase 1 (framework):** Next.js confirmed, but you can't get the HTML without a browser. Skipped.
-- **Phase 2 (browser):** `puppeteer-core.connect({ browserURL: TORCH_CHROME_ENDPOINT })`. No stealth, no cookies, no headers set — the real Chrome profile is already trusted. Walks in on the first try, parses `__NEXT_DATA__`, done.
+- **Phase 2 (browser):** `puppeteer-core.connect({ browserURL: the real Chrome debug port })`. No stealth, no cookies, no headers set — the real Chrome profile is already trusted. Walks in on the first try, parses `__NEXT_DATA__`, done.
 
 Do **not** start with `puppeteer.launch()` — even with `puppeteer-extra-plugin-stealth` you'll burn time on PX challenges. Real Chrome first, always.
 
@@ -51,7 +51,7 @@ Do **not** start with `puppeteer.launch()` — even with `puppeteer-extra-plugin
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT, // e.g. http://127.0.0.1:9222
+  browserURL: "http://127.0.0.1:9222", // e.g. http://127.0.0.1:9222
 });
 const page = await browser.newPage();
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -121,7 +121,7 @@ Quirks observed in the wild:
 | 1 UA / headers             | ❌      | Real Chrome already has them |
 | 2 Stealth plugin           | ❌      | Not used when connecting to real profile |
 | 3 Headful                  | ✅      | User's Chrome is headful by default |
-| 4 Real Chrome profile      | ✅      | **The whole trick.** `TORCH_CHROME_ENDPOINT` |
+| 4 Real Chrome profile      | ✅      | **The whole trick.** `127.0.0.1:9222` |
 | 5 CAPTCHA solver           | ❌      | Never served one |
 | 6 Residential proxy        | ❌      | User's home IP was fine |
 | 7 Session warmup           | ❌      | Not needed |
@@ -159,7 +159,7 @@ If the user's Chrome isn't available, escalate to: puppeteer-extra + stealth + h
 
 ## Gotchas & lessons
 
-1. **`curl` and fresh Chromium are a trap.** Both are hard-blocked by Akamai + PerimeterX. Always try `TORCH_CHROME_ENDPOINT` first; it turns a 1-hour challenge-solving slog into a 10-second scrape.
+1. **`curl` and fresh Chromium are a trap.** Both are hard-blocked by Akamai + PerimeterX. Always try `127.0.0.1:9222` first; it turns a 1-hour challenge-solving slog into a 10-second scrape.
 2. **Use `browser.disconnect()`, not `browser.close()`.** `close()` will terminate the user's real Chrome process — very bad.
 3. **Multiple `itemStacks` per page.** The main grid, "sponsored", and "popular brands" rails all look identical in the blob. Dedupe by `usItemId` or you'll get duplicates.
 4. **`priceString` is unreliable.** Use the numeric `price` as the source of truth.

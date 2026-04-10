@@ -17,7 +17,7 @@ metadata:
 | CDN / WAF | Akamai (`server: AkamaiGHost`, `bm_ss`/`bm_s`/`akavpau_*` cookies) |
 | Frontend | Next.js SPA at `/consumer-web/search/prd/catalog-usbc/` |
 | Bare curl on HTML | **403 Forbidden** (384-byte Akamai challenge body) |
-| Real Chrome (`TORCH_CHROME_ENDPOINT`) on HTML | 200, but product DOM is empty until hydration |
+| Real Chrome (`127.0.0.1:9222`) on HTML | 200, but product DOM is empty until hydration |
 | Backend API | `https://gdx-api.costco.com/catalog/search/api/v1/search` (POST) |
 | API auth | **None** — no cookies, no tokens |
 | API bot manager | **None** — plain `fetch` with a UA and 3 client headers works |
@@ -33,7 +33,7 @@ metadata:
 
 - **Phase 0 (curl)**: 403 on `/laptops.html`. Akamai. Noted.
 - **Phase 1 (framework)**: Next.js, but the initial HTML has no `__NEXT_DATA__` product payload and no `/_next/data/` JSON routes for this sub-app. Skipped.
-- **Phase 2 (browser recon only)**: Connected to real Chrome via `TORCH_CHROME_ENDPOINT`, navigated to `/laptops.html`, captured network. Found `gdx-api.costco.com/catalog/search/api/v1/search` with the POST body and headers. Immediately abandoned the browser.
+- **Phase 2 (browser recon only)**: Connected to real Chrome via `127.0.0.1:9222`, navigated to `/laptops.html`, captured network. Found `gdx-api.costco.com/catalog/search/api/v1/search` with the POST body and headers. Immediately abandoned the browser.
 - **Phase 3**: Replayed the API directly with `fetch`. No cookies. No browser. ~1.7s for the whole category.
 
 ## Replay recipe
@@ -108,7 +108,7 @@ Key gotcha: **pricing lives in `variantRollupValues`, not `product.priceInfo`**.
 | 1. Headers / UA | ✅ | `client_id`, `client-identifier`, `origin`, `referer`, UA |
 | 2. Cookies / session warmup | ❌ | API is cookieless |
 | 3. Stealth plugin | ❌ | No browser used |
-| 4. Real Chrome (`TORCH_CHROME_ENDPOINT`) | 🔍 recon only | Needed once to discover the API |
+| 4. Real Chrome (`127.0.0.1:9222`) | 🔍 recon only | Needed once to discover the API |
 | 5. CAPTCHA solver | ❌ | |
 | 6. Residential proxy | ❌ | Clean from a US residential IP; untested from datacenter |
 | 7. Rate limiting | ❌ | 200ms gap between pages is plenty |

@@ -1,6 +1,6 @@
 ---
 name: amazon
-description: Proven scraping playbook for amazon.com search result pages (/s?k=...). CloudFront + CAPTCHA wall blocks bare curl with HTTP 503, but a real Chrome session via TORCH_CHROME_ENDPOINT walks right through — no stealth, no proxy, no captcha. HTML is server-rendered; cheerio parses 22 results per page with stable `[data-component-type="s-search-result"]` blocks. Activate for any amazon.com /s search URL.
+description: Proven scraping playbook for amazon.com search result pages (/s?k=...). CloudFront + CAPTCHA wall blocks bare curl with HTTP 503, but a real Chrome session via the real Chrome debug port walks right through — no stealth, no proxy, no captcha. HTML is server-rendered; cheerio parses 22 results per page with stable `[data-component-type="s-search-result"]` blocks. Activate for any amazon.com /s search URL.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Amazon (amazon.com)
 
-> Amazon search pages are server-rendered HTML behind CloudFront. The only real obstacle is IP/UA reputation on anonymous clients (curl → `HTTP/2 503` + `x-cache: Error from cloudfront`). Attaching to the user's real Chrome profile via `TORCH_CHROME_ENDPOINT` defeats the bot wall on the first request — no stealth plugin, no proxy, no captcha solver required. From there it's pure cheerio on 22 `s-search-result` cards per page.
+> Amazon search pages are server-rendered HTML behind CloudFront. The only real obstacle is IP/UA reputation on anonymous clients (curl → `HTTP/2 503` + `x-cache: Error from cloudfront`). Attaching to the user's real Chrome profile via `127.0.0.1:9222` defeats the bot wall on the first request — no stealth plugin, no proxy, no captcha solver required. From there it's pure cheerio on 22 `s-search-result` cards per page.
 
 ## Detection
 
@@ -35,7 +35,7 @@ metadata:
 
 - **Phase 0 (curl)** — failed. `curl -A <chrome UA> https://www.amazon.com/s?k=...` → `HTTP/2 503` from CloudFront. Confirmed this is IP/UA reputation, not a missing header.
 - **Phase 1 (framework)** — skipped. No Next.js `__NEXT_DATA__`, no clean JSON API on public search. The HTML is the API.
-- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })` to the user's real Chrome. First request loaded full results, no challenge, no captcha. Then `page.content()` → cheerio. **Do not** use a fresh Chromium + stealth here; it's a wasted escalation step on Amazon.
+- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: the real Chrome debug port })` to the user's real Chrome. First request loaded full results, no challenge, no captcha. Then `page.content()` → cheerio. **Do not** use a fresh Chromium + stealth here; it's a wasted escalation step on Amazon.
 
 ## Stealth config that works
 
@@ -44,7 +44,7 @@ None needed beyond real Chrome. The real-Chrome connect *is* the stealth:
 ```js
 import puppeteer from "puppeteer-core";
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT,
+  browserURL: "http://127.0.0.1:9222",
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 900 });
@@ -115,7 +115,7 @@ Expect ~22 result cards per page. Sponsored-slot `link` values are `/sspa/click?
 | 1. Basic headers / UA | — | Irrelevant once you're on real Chrome. |
 | 2. Cheerio + fetch    | ❌ | Blocked at CloudFront, HTTP 503. |
 | 3. Puppeteer (fresh Chromium + stealth) | ❌ (not tried, but known to trip Robot Check on a clean IP) |
-| 4. **Puppeteer.connect → real Chrome (TORCH_CHROME_ENDPOINT)** | ✅ | The winning move. One-shot. |
+| 4. **Puppeteer.connect → real Chrome (the real Chrome debug port)** | ✅ | The winning move. One-shot. |
 | 5. CAPTCHA solver | ❌ | Never saw a captcha in this run. |
 | 6. Residential proxy | ❌ | Real Chrome's existing session on a home IP was enough. |
 
@@ -148,7 +148,7 @@ If you ever *do* land on Robot Check (e.g. after hammering from a datacenter IP)
 ## Gotchas & lessons
 
 1. **Bare `curl` returns `HTTP/2 503` with `x-cache: Error from cloudfront`** — this is CloudFront bot-wall, not a missing header. Don't waste time tuning `User-Agent` / `Accept-Language` / cookies on fetch. Go straight to real Chrome.
-2. **Do not use `puppeteer.launch()` with stealth as a starting point** on Amazon. Clean Chromium profiles from datacenter IPs get the Robot Check page. Real Chrome via `TORCH_CHROME_ENDPOINT` is the default.
+2. **Do not use `puppeteer.launch()` with stealth as a starting point** on Amazon. Clean Chromium profiles from datacenter IPs get the Robot Check page. Real Chrome via `127.0.0.1:9222` is the default.
 3. **Always `browser.disconnect()`, never `close()`** when attached to the user's Chrome, or you'll kill their browser.
 4. **Rating + review count are in the aria-label**, not in the visible star span text. The star span frequently renders empty under cheerio; the aria-label `"Rated X out of 5 stars by N reviews..."` is the reliable source.
 5. **Sponsored links use `/sspa/click?...url=<encoded>`**. They still resolve to a real product, but if you want the canonical `/dp/<ASIN>` path, URL-decode the `url=` query param.

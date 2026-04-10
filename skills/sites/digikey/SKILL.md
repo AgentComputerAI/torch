@@ -1,6 +1,6 @@
 ---
 name: digikey
-description: Proven scraping playbook for digikey.com /en/products/category/ listings. Cloudflare challenge (cf-mitigated: challenge) blocks bare curl with HTTP 403, but a puppeteer connection to the user's real Chrome via TORCH_CHROME_ENDPOINT walks straight through with zero stealth, no captcha, no proxy, no auth. Listings are server-rendered into a single `<table>` whose rows contain `a[href*="/en/products/detail/"]`; every parametric column (Core Processor, Speed, RAM, package, etc.) is just a `<th>`/`<td>` pair you can zip. Activate for any digikey.com /en/products/category/ scrape.
+description: Proven scraping playbook for digikey.com /en/products/category/ listings. Cloudflare challenge (cf-mitigated: challenge) blocks bare curl with HTTP 403, but a puppeteer connection to the user's real Chrome via the real Chrome debug port walks straight through with zero stealth, no captcha, no proxy, no auth. Listings are server-rendered into a single `<table>` whose rows contain `a[href*="/en/products/detail/"]`; every parametric column (Core Processor, Speed, RAM, package, etc.) is just a `<th>`/`<td>` pair you can zip. Activate for any digikey.com /en/products/category/ scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -43,7 +43,7 @@ server: cloudflare
 
 - Phase 0 (curl): **failed** — 403 + Cloudflare challenge.
 - Phase 1 (framework recon): skipped — site is plain SSR, no Next/Nuxt/Shopify/WP fingerprints.
-- Phase 2 (browser): **`puppeteer-core` + `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })`**. The challenge clears on first navigation in the user's real Chrome. No stealth plugin, no captcha solver, no proxy.
+- Phase 2 (browser): **`puppeteer-core` + `puppeteer.connect({ browserURL: the real Chrome debug port })`**. The challenge clears on first navigation in the user's real Chrome. No stealth plugin, no captcha solver, no proxy.
 
 ## Code
 
@@ -52,7 +52,7 @@ import puppeteer from "puppeteer-core";
 import fs from "fs";
 
 const URL = "https://www.digikey.com/en/products/category/microcontrollers/685";
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setViewport({ width: 1480, height: 950 });
 
@@ -102,7 +102,7 @@ try {
 | 1. Realistic UA / headers | n/a | Real Chrome supplies them |
 | 2. Stealth plugin | **no** | Not used; CF clears anyway |
 | 3. Headed Chromium | **no** | Use `connect()`, not `launch()` |
-| 4. Real Chrome profile | **yes** | `TORCH_CHROME_ENDPOINT` is the whole trick |
+| 4. Real Chrome profile | **yes** | `127.0.0.1:9222` is the whole trick |
 | 5. CAPTCHA solver | no | No interactive challenge |
 | 6. Residential proxy | no | Datacenter IP fine via real Chrome |
 | 7. Session warmup | no | First navigation works |
@@ -149,6 +149,6 @@ The `Price` cell is the cheapest break only — `"1 : $0.38000 Tube"` means 1+ u
 2. **`disconnect()`, never `close()`.** `close()` would kill the user's actual Chrome window.
 3. **Read `<thead>` dynamically.** Column count and order vary per category. Hard-coding column indexes will silently break the next category you scrape.
 4. **`Mfr Part #` is a flat concat.** Part number, description, and manufacturer are visually distinct but `innerText` joins them. Use the inner `<a>` text for the clean part number, or split on the description.
-5. **Stealth plugin is unnecessary** when using `TORCH_CHROME_ENDPOINT`. A previous run that tried `puppeteer-extra` + stealth got `null` for every field — likely because the page hadn't fully painted before extraction. The fix was a 2.5s post-selector wait, not more stealth.
+5. **Stealth plugin is unnecessary** when using `127.0.0.1:9222`. A previous run that tried `puppeteer-extra` + stealth got `null` for every field — likely because the page hadn't fully painted before extraction. The fix was a 2.5s post-selector wait, not more stealth.
 6. **Only one XHR fires** during page load (`scTools/Header2021/GeoInfo`) and it's just for the country banner. There's no public product JSON API to replay — the table HTML is the source of truth.
 7. **Cloudflare cookie persists** for 30 minutes (`__cf_bm`) per the response. Subsequent pages in the same Chrome session reuse it; no re-challenge.

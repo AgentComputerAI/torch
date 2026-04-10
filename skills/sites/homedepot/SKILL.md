@@ -1,6 +1,6 @@
 ---
 name: homedepot
-description: Proven scraping playbook for homedepot.com search results (/s/<query>). Akamai Bot Manager hard-blocks raw curl with HTTP 403 (AkamaiGHost), but a puppeteer connection to the user's real Chrome via TORCH_CHROME_ENDPOINT walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. Products are server-rendered in the HTML as `[data-testid="product-pod"]` blocks (each pod appears twice in the DOM, dedupe by product ID). Activate for any homedepot.com /s/ search scrape.
+description: Proven scraping playbook for homedepot.com search results (/s/<query>). Akamai Bot Manager hard-blocks raw curl with HTTP 403 (AkamaiGHost), but a puppeteer connection to the user's real Chrome via the real Chrome debug port walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. Products are server-rendered in the HTML as `[data-testid="product-pod"]` blocks (each pod appears twice in the DOM, dedupe by product ID). Activate for any homedepot.com /s/ search scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Home Depot (homedepot.com)
 
-> Akamai-protected Next.js site. Curl is dead on arrival (403 AkamaiGHost). Real Chrome via `TORCH_CHROME_ENDPOINT` passes silently. Once inside, product data is fully server-rendered in HTML — cheerio parses it. No API replay needed.
+> Akamai-protected Next.js site. Curl is dead on arrival (403 AkamaiGHost). Real Chrome via `127.0.0.1:9222` passes silently. Once inside, product data is fully server-rendered in HTML — cheerio parses it. No API replay needed.
 
 ## Detection
 
@@ -31,14 +31,14 @@ metadata:
 
 - **Phase 0 (curl)** — fails. `curl -sL https://www.homedepot.com/s/drill` → HTTP 403 `AkamaiGHost`, 2.3KB sensor challenge body. Do not waste time here.
 - **Phase 1 (framework JSON)** — `__NEXT_DATA__` is present but the searchModel payload is not populated (SSR streams tiles as HTML, not JSON). Skip.
-- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })` → `page.goto(url, { waitUntil: "domcontentloaded" })` → `waitForSelector('[data-testid="product-pod"]')`. Passes with zero friction. **No stealth plugin needed** — it IS the user's Chrome.
+- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: the real Chrome debug port })` → `page.goto(url, { waitUntil: "domcontentloaded" })` → `waitForSelector('[data-testid="product-pod"]')`. Passes with zero friction. **No stealth plugin needed** — it IS the user's Chrome.
 
 ## Stealth config that works
 
 ```js
 import puppeteer from "puppeteer-core";
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT, // e.g. http://127.0.0.1:9222
+  browserURL: "http://127.0.0.1:9222", // e.g. http://127.0.0.1:9222
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 900 });
@@ -92,7 +92,7 @@ const reviewCount = m ? parseInt(m[2], 10) : null;
 | 2. Headers            | —       | real Chrome sets them                              |
 | 3. Cookies / session  | ✅      | comes free from user's Chrome profile              |
 | 4. Stealth plugin     | ❌      | not needed when connected to real Chrome          |
-| 5. Headed Chromium    | ✅ (via TORCH_CHROME_ENDPOINT) | disposable Chromium would trip Akamai |
+| 5. Headed Chromium    | ✅ (via the real Chrome debug port) | disposable Chromium would trip Akamai |
 | 6. CAPTCHA solver     | ❌      | no captcha encountered                             |
 | 7. Residential proxy  | ❌      | not needed                                         |
 | 8. Mobile UA          | ❌      |                                                    |
@@ -137,7 +137,7 @@ Summary: Akamai on Home Depot scores the TLS fingerprint + browsing history + co
 4. **Titles contain soft hyphens** (`\u00AD`) inserted for line-breaking. Strip with `.replace(/\u00AD/g, "")` if matching against other sources.
 5. **Brand is its own field** (`attribute-brandname-inline`) — don't try to parse it out of the title. The title string starts with the brand concatenated with no space (`DEWALT20V MAX...`).
 6. **Prices are localized** to the store set in the user's Chrome profile cookie. If the client cares about a specific store, set it in Chrome before scraping — there is no clean query-string override.
-7. **`disconnect()` not `close()`.** `browser.close()` would kill the user's real Chrome. Always `await page.close(); browser.disconnect();` when using `TORCH_CHROME_ENDPOINT`.
+7. **`disconnect()` not `close()`.** `browser.close()` would kill the user's real Chrome. Always `await page.close(); browser.disconnect();` when using `127.0.0.1:9222`.
 8. **Pagination param is `Nao`** (Not `page`, not `offset`). `?Nao=24` = page 2.
 
 ## Reference implementation

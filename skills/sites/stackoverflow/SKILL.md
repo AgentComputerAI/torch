@@ -1,6 +1,6 @@
 ---
 name: stackoverflow
-description: Proven scraping playbook for stackoverflow.com tag/question listing pages (e.g. /questions/tagged/<tag>). Server-rendered HTML, but Cloudflare flags raw curl/node-fetch with HTTP 403 after the very first request. Connecting to the user's real Chrome via TORCH_CHROME_ENDPOINT walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. All questions are embedded in `.s-post-summary` blocks. Activate for any stackoverflow.com listing scrape.
+description: Proven scraping playbook for stackoverflow.com tag/question listing pages (e.g. /questions/tagged/<tag>). Server-rendered HTML, but Cloudflare flags raw curl/node-fetch with HTTP 403 after the very first request. Connecting to the user's real Chrome via the real Chrome debug port walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. All questions are embedded in `.s-post-summary` blocks. Activate for any stackoverflow.com listing scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Stack Overflow (stackoverflow.com)
 
-> Classic server-rendered HTML in front of Cloudflare. A single cold curl gets HTML 200, but every subsequent anonymous request is 403'd by Cloudflare's bot heuristics (the `__cf_bm` / `_cfuvid` cookies issued on the first hit need a real browser TLS fingerprint to stay valid). Real Chrome via `TORCH_CHROME_ENDPOINT` sidesteps this entirely. Question data is inline in the HTML — no API or JSON blob needed.
+> Classic server-rendered HTML in front of Cloudflare. A single cold curl gets HTML 200, but every subsequent anonymous request is 403'd by Cloudflare's bot heuristics (the `__cf_bm` / `_cfuvid` cookies issued on the first hit need a real browser TLS fingerprint to stay valid). Real Chrome via `127.0.0.1:9222` sidesteps this entirely. Question data is inline in the HTML — no API or JSON blob needed.
 
 ## Detection
 
@@ -30,7 +30,7 @@ metadata:
 
 - **Phase 0 (curl)**: first request returns 200 with full HTML. Second request: 403. Cloudflare is stateful.
 - **Phase 1**: no framework JSON blob — data is straight HTML. Skip.
-- **Phase 2**: `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })`. First navigation succeeds, and so does every subsequent one — the real Chrome profile keeps the Cloudflare cookies rotating correctly.
+- **Phase 2**: `puppeteer.connect({ browserURL: the real Chrome debug port })`. First navigation succeeds, and so does every subsequent one — the real Chrome profile keeps the Cloudflare cookies rotating correctly.
 
 ## Stealth config that works
 
@@ -38,7 +38,7 @@ metadata:
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT,
+  browserURL: "http://127.0.0.1:9222",
 });
 const page = await browser.newPage();
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -122,7 +122,7 @@ $(".s-post-summary").each((_, el) => {
 
 ## Gotchas & lessons
 
-1. **Cold curl works exactly once.** Don't waste cycles trying header tweaks — move straight to `TORCH_CHROME_ENDPOINT`.
+1. **Cold curl works exactly once.** Don't waste cycles trying header tweaks — move straight to `127.0.0.1:9222`.
 2. **Do not use the stats-item index to find votes/answers/views.** Some rows have an extra `s-post-summary--stats-item` for badges ("Best practices", "Hot") which shifts every subsequent index. Use `[itemprop="upvoteCount"]` / `[itemprop="answerCount"]` and the views `title` tooltip instead.
 3. **Views are not in an itemprop.** Only the `title="123 views"` tooltip exposes the count.
 4. **`browser.disconnect()`, never `browser.close()`** — `close()` would kill the user's real Chrome.

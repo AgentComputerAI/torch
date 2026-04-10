@@ -10,7 +10,7 @@ metadata:
 
 Camoufox is a [Firefox fork](https://github.com/daijro/camoufox) where fingerprint spoofing happens at the **C++ engine level** — `navigator.*`, WebGL, Canvas, AudioContext, screen geometry are all rewritten before any JavaScript can inspect them. That makes it structurally more robust than puppeteer-stealth, which patches the same signals via JavaScript shims that anti-bot systems can detect.
 
-For torch, Camoufox is the answer to **"my machine can't run the real-Chrome-clone strategy"** — VMs, headless servers, CI pipelines, remote boxes with no host Chrome. It's a strict fallback, not a replacement: when `TORCH_CHROME_ENDPOINT` is available (the user's real profile), that's still the better choice because it has real cookies, history, and browsing reputation that Camoufox's synthetic fingerprints cannot replicate.
+For torch, Camoufox is the answer to **"my machine can't run the real-Chrome-clone strategy"** — VMs, headless servers, CI pipelines, remote boxes with no host Chrome. It's a strict fallback, not a replacement: when `127.0.0.1:9222` is available (the user's real profile), that's still the better choice because it has real cookies, history, and browsing reputation that Camoufox's synthetic fingerprints cannot replicate.
 
 ## When to activate
 
@@ -23,7 +23,7 @@ Use this skill when:
 
 Do **not** use this skill when:
 
-- The user has a real Chrome profile torch can clone (`TORCH_CHROME_ENDPOINT` is set) — real profile beats synthetic fingerprint for account-level reputation scoring
+- The user has a real Chrome profile torch can clone (`127.0.0.1:9222` is set) — real profile beats synthetic fingerprint for account-level reputation scoring
 - The site tests specifically for Chrome/Chromium (some sites use V8-specific quirks that SpiderMonkey cannot spoof)
 - You only need to scrape soft targets where vanilla stealth plugin already works
 
@@ -155,6 +155,6 @@ This is the killer feature for VM/CI usage. The "headless: false" requirement th
 
 ## Related skills
 
-- `scrape` — the main scraping workflow. Its "Phase 2 browser" section checks for `TORCH_CAMOUFOX_ENDPOINT` as the second-choice backend after `TORCH_CHROME_ENDPOINT`.
+- `scrape` — the main scraping workflow. Its "Phase 2 browser" section checks for `TORCH_CAMOUFOX_ENDPOINT` as the second-choice backend after `127.0.0.1:9222`.
 - `proxy` — combine Camoufox with residential proxies when even C++-level stealth isn't enough. Camoufox supports proxies natively via `--proxy` launch args or per-context config.
 - `2captcha`, `capmonster` — Camoufox can hit captchas too (behavioral detection is orthogonal to fingerprinting). Same solver APIs apply.

@@ -1,6 +1,6 @@
 ---
 name: zillow
-description: Proven scraping playbook for zillow.com /homes/for_sale/ search pages. CloudFront + PerimeterX (HumanSecurity) gates raw curl with HTTP 403 `x-px-blocked: 1`. A puppeteer.connect() to the user's real Chrome via TORCH_CHROME_ENDPOINT walks through the challenge — but only if you (a) clear poisoned cookies first and (b) warm up via Google referer. All listings ship in `__NEXT_DATA__`. Activate for any zillow.com search/listing scrape.
+description: Proven scraping playbook for zillow.com /homes/for_sale/ search pages. CloudFront + PerimeterX (HumanSecurity) gates raw curl with HTTP 403 `x-px-blocked: 1`. A puppeteer.connect() to the user's real Chrome via the real Chrome debug port walks through the challenge — but only if you (a) clear poisoned cookies first and (b) warm up via Google referer. All listings ship in `__NEXT_DATA__`. Activate for any zillow.com search/listing scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -32,14 +32,14 @@ Bare curl/fetch returns HTTP 403 with a 5.8KB CAPTCHA HTML. Even a real Chrome s
 
 - **Phase 0 (curl):** 403, `x-px-blocked: 1`. Skip.
 - **Phase 1 (framework recon):** Confirmed Next.js, but couldn't fetch HTML to parse. Skip.
-- **Phase 2 (browser via TORCH_CHROME_ENDPOINT):** Works after cookie clear + Google warmup. This is the canonical path.
+- **Phase 2 (browser via the real Chrome debug port):** Works after cookie clear + Google warmup. This is the canonical path.
 
 ## Stealth config that works
 
 ```js
 import puppeteer from "puppeteer-core";
 
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 900 });
 
@@ -123,7 +123,7 @@ DOM fallback (if `__NEXT_DATA__` ever moves): `article[data-test="property-card"
 |---|---|---|
 | 1 — Headers/UA | No | Real Chrome supplies them |
 | 2 — Stealth plugin | No | Real Chrome IS the user's Chrome |
-| 3 — Headed mode | Yes | Via TORCH_CHROME_ENDPOINT |
+| 3 — Headed mode | Yes | Via the real Chrome debug port |
 | 4 — Real Chrome profile | **Yes — required** | Disposable Chromium gets PX-blocked |
 | 5 — Cookie hygiene | **Yes — required** | Must clear cookies before each run; PX deny verdict is sticky |
 | 6 — Referer warmup | **Yes — required** | Direct goto() to search URL fails; Google → search works |
@@ -173,7 +173,7 @@ A San Francisco search returns 41 results on the first page.
 
 1. **The PX deny verdict is sticky in cookies.** Once any tab hits "Access to this page has been denied", every subsequent zillow.com navigation in that profile returns the same page until you `Network.clearBrowserCookies`. This is the #1 thing that breaks reruns. Always clear cookies at the top of the script.
 2. **Direct `goto(searchUrl)` from a clean session sometimes still trips PX.** Hitting Google first (any zillow-related query) and then the search URL is reliable. The 1.5s pause after Google matters.
-3. **Don't use `puppeteer.launch()` (disposable Chromium).** PX scores it instantly even with the stealth plugin. Real Chrome via `TORCH_CHROME_ENDPOINT` is the only working browser path observed.
+3. **Don't use `puppeteer.launch()` (disposable Chromium).** PX scores it instantly even with the stealth plugin. Real Chrome via `127.0.0.1:9222` is the only working browser path observed.
 4. **`waitUntil: "networkidle2"` hangs on Zillow** because of long-poll websockets. Use `"domcontentloaded"` + a fixed sleep.
 5. **No need to scroll** to load cards — the entire `listResults` array is in `__NEXT_DATA__` at page load. Scrolling only matters if you want the lazy-loaded image `src`s, which `imgSrc` in the JSON already gives you.
 6. **`detailUrl` is sometimes relative** (`/homedetails/…`) and sometimes absolute. Normalize both ways.

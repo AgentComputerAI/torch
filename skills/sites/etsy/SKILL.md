@@ -1,6 +1,6 @@
 ---
 name: etsy
-description: Proven scraping playbook for etsy.com search result pages (/search?q=...). DataDome protects the HTML edge (bare curl gets HTTP 403 with `x-datadome: protected` and a JS captcha shell), but a puppeteer-core connection to the user's real Chrome via `TORCH_CHROME_ENDPOINT` walks through on first navigation — no 2Captcha, no proxy, no login needed. HTML is server-rendered; cheerio parses ~60 `div.listing-link[data-listing-id]` cards per page with stable selectors. Activate for any etsy.com /search target.
+description: Proven scraping playbook for etsy.com search result pages (/search?q=...). DataDome protects the HTML edge (bare curl gets HTTP 403 with `x-datadome: protected` and a JS captcha shell), but a puppeteer-core connection to the user's real Chrome via `127.0.0.1:9222` walks through on first navigation — no 2Captcha, no proxy, no login needed. HTML is server-rendered; cheerio parses ~60 `div.listing-link[data-listing-id]` cards per page with stable selectors. Activate for any etsy.com /search target.
 metadata:
   author: torch
   version: "1.0.0"
@@ -41,7 +41,7 @@ metadata:
 
 - **Phase 0 (curl)**: 403 + DataDome shell. Skip.
 - **Phase 1 (framework)**: no Next.js / Nuxt blob; the HTML is the source of truth. Skip API replay.
-- **Phase 2 (browser)**: puppeteer-core `connect({ browserURL: TORCH_CHROME_ENDPOINT })` → warm on `https://www.etsy.com/` for ~2.5s → `goto(searchUrl)` → DataDome passes instantly → scroll 0..6000px to trigger lazy cards → `page.content()` → cheerio parse.
+- **Phase 2 (browser)**: puppeteer-core `connect({ browserURL: the real Chrome debug port })` → warm on `https://www.etsy.com/` for ~2.5s → `goto(searchUrl)` → DataDome passes instantly → scroll 0..6000px to trigger lazy cards → `page.content()` → cheerio parse.
 
 No stealth plugin is necessary when attaching to the user's real Chrome — the profile already has history, cookies, and a trusted TLS fingerprint. **Do not `browser.close()`** — always `page.close() + browser.disconnect()` or you will kill the user's Chrome.
 
@@ -51,7 +51,7 @@ No stealth plugin is necessary when attaching to the user's real Chrome — the 
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT, // http://127.0.0.1:9222
+  browserURL: "http://127.0.0.1:9222", // http://127.0.0.1:9222
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900 });
@@ -130,7 +130,7 @@ $('div.listing-link[data-listing-id]').each((_, el) => {
 |-------|---------|-------|
 | 1. User-Agent / headers | — | Chrome session supplies its own |
 | 2. Cookies / session warmup | ✅ | Hit `etsy.com/` first, then search. DataDome seems to accept the flow without extra work |
-| 3. puppeteer-extra stealth | ❌ | Not needed when using `TORCH_CHROME_ENDPOINT` — the real profile beats any stealth plugin |
+| 3. puppeteer-extra stealth | ❌ | Not needed when using `127.0.0.1:9222` — the real profile beats any stealth plugin |
 | 4. Headed Chromium | ❌ (n/a) | N/A — we connect to the user's real Chrome |
 | 5. 2Captcha / CapMonster | ❌ | DataDome never issues a visible challenge on the real-Chrome path |
 | 6. Residential proxy | ❌ | User's residential IP is fine |
@@ -162,7 +162,7 @@ $('div.listing-link[data-listing-id]').each((_, el) => {
 ## Pagination / crawl architecture
 
 - Pagination: append `&page=N` to the search URL. Etsy caps search results to page 250 (`&page=250`); deep pages may redirect.
-- For multi-page crawls, run pages sequentially in the same Chrome session with a 3–5s delay. Keep `TORCH_CHROME_ENDPOINT` stable — don't reconnect per page.
+- For multi-page crawls, run pages sequentially in the same Chrome session with a 3–5s delay. Keep `127.0.0.1:9222` stable — don't reconnect per page.
 - For category/browse pages (e.g. `/c/bath-and-beauty/soaps`), the same selectors apply — it's the same listing-card component.
 - Checkpoint to disk after every page (`output/etsy-<slug>-page-N.json`) so partial runs aren't lost.
 
@@ -174,5 +174,5 @@ $('div.listing-link[data-listing-id]').each((_, el) => {
 4. **Every card shows an `AdBy` tooltip button**, even non-promoted ones. Detecting "ad" via the `AdBy` substring gives false positives. Use the `span.wt-screen-reader-only` text `"Ad from shop …"` instead if you need that boolean.
 5. **Reviews format is `(139.7k)`** — parenthesized and abbreviated (`1.2k`, `16.4k`, `139.7k`). Strip parens; parse `k`/`m` suffix yourself if you need an integer.
 6. **DataDome's `x-datadome-riskscore` was 0.996 on curl** — a very hostile score. Stealth-launched Chromium will almost certainly also be blocked; do not waste time on it without a residential proxy.
-7. **Never `browser.close()`** when you used `TORCH_CHROME_ENDPOINT`. It will terminate the user's entire Chrome. Always `page.close() + browser.disconnect()`.
+7. **Never `browser.close()`** when you used `127.0.0.1:9222`. It will terminate the user's entire Chrome. Always `page.close() + browser.disconnect()`.
 8. **First ~24 cards render eagerly; the rest are lazy.** Scroll 0→6000px in 800px steps with 300ms between steps to materialize all 60 before `page.content()`.

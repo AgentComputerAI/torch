@@ -1,6 +1,6 @@
 ---
 name: producthunt
-description: Proven scraping playbook for producthunt.com homepage. Cloudflare-protected Next.js-ish SPA (no __NEXT_DATA__), but a puppeteer.connect() to the user's real Chrome via TORCH_CHROME_ENDPOINT walks straight through the CF challenge with zero stealth plugins. All homepage posts are server-rendered into the HTML as `section[data-test^="post-item-"]` blocks, grouped under `[data-test="homepage-section-{today|yesterday|last-week|last-month}"]`. Activate for any producthunt.com homepage scrape.
+description: Proven scraping playbook for producthunt.com homepage. Cloudflare-protected Next.js-ish SPA (no __NEXT_DATA__), but a puppeteer.connect() to the user's real Chrome via the real Chrome debug port walks straight through the CF challenge with zero stealth plugins. All homepage posts are server-rendered into the HTML as `section[data-test^="post-item-"]` blocks, grouped under `[data-test="homepage-section-{today|yesterday|last-week|last-month}"]`. Activate for any producthunt.com homepage scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -20,7 +20,7 @@ metadata:
 | Auth | None required for homepage |
 | robots.txt | Allows `/` |
 
-Bare `curl https://www.producthunt.com/` → `HTTP/2 403` with `cf-mitigated: challenge`. A puppeteer.connect to the user's real Chrome (`TORCH_CHROME_ENDPOINT`) clears the challenge in <1s with zero intervention — no stealth plugin, no proxy, no captcha solver.
+Bare `curl https://www.producthunt.com/` → `HTTP/2 403` with `cf-mitigated: challenge`. A puppeteer.connect to the user's real Chrome (`127.0.0.1:9222`) clears the challenge in <1s with zero intervention — no stealth plugin, no proxy, no captcha solver.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ Each post is a `<section data-test="post-item-<id>">` block.
 
 - **Phase 0 (curl):** blocked by Cloudflare (`cf-mitigated: challenge`, 403).
 - **Phase 1 (framework JSON):** no `__NEXT_DATA__`, no `window.__APOLLO_STATE__`. Skipped.
-- **Phase 2 (browser):** `puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT })` → challenge clears instantly, HTML contains everything. Done.
+- **Phase 2 (browser):** `puppeteer.connect({ browserURL: "http://127.0.0.1:9222" })` → challenge clears instantly, HTML contains everything. Done.
 
 ## Stealth config that works
 
@@ -45,7 +45,7 @@ None. Just connect to real Chrome:
 
 ```js
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT,
+  browserURL: "http://127.0.0.1:9222",
 });
 const page = await browser.newPage();
 await page.goto("https://www.producthunt.com/", { waitUntil: "domcontentloaded" });
@@ -158,5 +158,5 @@ Homepage is a single request — no pagination needed for the top 92. For histor
 4. **Tagline is a plain `<span>`**, not an anchor. There's no tagline link — iterate spans and pick the first one with direct text that isn't a bullet or a rank.
 5. **Comments vs votes ordering.** In the DOM, comments `<p>` comes *before* votes `<p>`. Use `[data-test="vote-button"]` to identify votes, then the other numeric `<p>` is comments.
 6. **Contest pills** (e.g. "Alpha") are anchors to `/contests/...` that sit next to the name. Ignore them unless you want to capture contest membership.
-7. **`browser.disconnect()` never `browser.close()`** when using `TORCH_CHROME_ENDPOINT` — `close()` kills the user's real Chrome.
+7. **`browser.disconnect()` never `browser.close()`** when using `127.0.0.1:9222` — `close()` kills the user's real Chrome.
 8. **Don't save the working script as `scrape.js`** in this repo — something in the environment rewrites that filename between runs. Use a unique name like `producthunt.mjs`.

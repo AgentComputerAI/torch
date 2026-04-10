@@ -1,6 +1,6 @@
 ---
 name: ikea
-description: Proven scraping playbook for ikea.com /cat/ category pages (PLP). Server-rendered HTML with 24 products per page embedded as `[data-testid="plp-product-card"]` blocks, each carrying `data-ref-id`, `data-product-name`, `data-price`, `data-currency` attributes — no JSON blob needed, cheerio parses them straight. Cloudflare fronts the site but does NOT block bare curl for HTML (200 OK, no challenge); however the CDN caches `?page=N` aggressively and can return page 1 content to anonymous curl even for `?page=2`. Fix: drive pagination through a real Chrome via TORCH_CHROME_ENDPOINT — it bypasses the stale CDN cache and each `?page=N` navigation returns its own SSR batch of 24. Activate for any ikea.com /cat/ URL.
+description: Proven scraping playbook for ikea.com /cat/ category pages (PLP). Server-rendered HTML with 24 products per page embedded as `[data-testid="plp-product-card"]` blocks, each carrying `data-ref-id`, `data-product-name`, `data-price`, `data-currency` attributes — no JSON blob needed, cheerio parses them straight. Cloudflare fronts the site but does NOT block bare curl for HTML (200 OK, no challenge); however the CDN caches `?page=N` aggressively and can return page 1 content to anonymous curl even for `?page=2`. Fix: drive pagination through a real Chrome via the real Chrome debug port — it bypasses the stale CDN cache and each `?page=N` navigation returns its own SSR batch of 24. Activate for any ikea.com /cat/ URL.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # IKEA (ikea.com)
 
-> IKEA PLPs are boring-good SSR HTML. Every product card is a fat `<div data-testid="plp-product-card">` with all the important fields inline on data-attributes. The only real trap is Cloudflare's edge cache: plain curl gets a 200 but serves identical page-1 HTML for every `?page=N` query, so pagination has to go through a real browser (or cache-busting headers Cloudflare currently ignores). Real Chrome via `TORCH_CHROME_ENDPOINT` walks through cleanly with zero challenges — no stealth, no proxy, no captcha.
+> IKEA PLPs are boring-good SSR HTML. Every product card is a fat `<div data-testid="plp-product-card">` with all the important fields inline on data-attributes. The only real trap is Cloudflare's edge cache: plain curl gets a 200 but serves identical page-1 HTML for every `?page=N` query, so pagination has to go through a real browser (or cache-busting headers Cloudflare currently ignores). Real Chrome via `127.0.0.1:9222` walks through cleanly with zero challenges — no stealth, no proxy, no captcha.
 
 ## Detection
 
@@ -48,7 +48,7 @@ metadata:
 
 - **Phase 0 (curl)** — 200 OK, Cloudflare but no challenge, all page-1 data in raw HTML. ✅
 - **Phase 1 (framework)** — no JSON blob. Data is on DOM data-attributes, so cheerio is the right tool.
-- **Phase 2 (browser)** — needed ONLY for pagination, because Cloudflare serves stale page-1 HTML to curl for every `?page=N`. Real Chrome via `TORCH_CHROME_ENDPOINT` resolves each page correctly on `page.goto`.
+- **Phase 2 (browser)** — needed ONLY for pagination, because Cloudflare serves stale page-1 HTML to curl for every `?page=N`. Real Chrome via `127.0.0.1:9222` resolves each page correctly on `page.goto`.
 
 You can scrape page 1 with plain curl + cheerio in milliseconds. Only reach for a browser when you need pages 2+.
 
@@ -57,7 +57,7 @@ You can scrape page 1 with plain curl + cheerio in milliseconds. Only reach for 
 ```js
 import puppeteer from "puppeteer-core";
 
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setCacheEnabled(false);
 // no stealth, no UA override, no extra headers — real Chrome walks through
@@ -144,4 +144,4 @@ Concurrency: 1 tab is plenty (63 items / 3 pages = <10s end-to-end). Navigating 
 5. **Total count selector.** The text `Showing X of N results` lives in `.catalog-product-list__total-count`; also inside an embedded JSON island as `"totalCount":N` — either works, the regex is safer.
 6. **Product IDs can start with `s`.** e.g. `s19445469` for package/set products. Don't assume all-numeric.
 7. **No JSON API.** IKEA has nothing like Nike's `api.nike.com` or Target's `redsky`. Don't waste time hunting — the HTML IS the API.
-8. **Don't `browser.close()` the user's Chrome.** When connected via `TORCH_CHROME_ENDPOINT`, always `browser.disconnect()` in the finally block.
+8. **Don't `browser.close()` the user's Chrome.** When connected via `127.0.0.1:9222`, always `browser.disconnect()` in the finally block.

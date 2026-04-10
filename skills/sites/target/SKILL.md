@@ -153,6 +153,6 @@ const meta = json.data.search.search_response.metadata;
 2. **`include_sponsored=true` returns HTTP 206** with a `sponsored-search` backend error in `errors[]`, but `data.search.products` is still populated. Use `include_sponsored=false` for clean 200s.
 3. **The API key is public and stable** — it's in `window.__CONFIG__.services.defaultServicesApiKey` on every target.com page. Rotate from there if it ever changes.
 4. **`pricing_store_id` affects price/availability** — deals and in-store pickup vary by store. Use a consistent one if you care about reproducibility.
-5. **www.target.com HTML is PerimeterX-protected** but you almost never need it. If you do (e.g. for PDP content not in the API), connect to real Chrome via `TORCH_CHROME_ENDPOINT`. Disposable Chromium + stealth gets flagged fast.
+5. **www.target.com HTML is PerimeterX-protected** but you almost never need it. If you do (e.g. for PDP content not in the API), connect to real Chrome via `127.0.0.1:9222`. Disposable Chromium + stealth gets flagged fast.
 6. **Category pages** use `category=<N-id>` instead of `keyword=`. The N-id is the last path segment of `/c/<slug>/-/N-xxxxx`.
 7. **`count` > 24 doesn't help** — the backend seems to cap at 24 regardless of what you ask for.

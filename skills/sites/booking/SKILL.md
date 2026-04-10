@@ -1,6 +1,6 @@
 ---
 name: booking
-description: Proven scraping playbook for booking.com searchresults.html pages. CloudFront-fronted JS challenge blocks bare curl (HTTP 202 with a script-only interstitial), but a real Chrome session via TORCH_CHROME_ENDPOINT walks through on first navigation — no captcha, no proxy, no login. Listings are rendered client-side into [data-testid="property-card"] cards; pagination uses a "Load more results" button after the first 25. Prices only populate when the URL carries checkin/checkout/group_adults params. Activate for any booking.com /searchresults.html scrape.
+description: Proven scraping playbook for booking.com searchresults.html pages. CloudFront-fronted JS challenge blocks bare curl (HTTP 202 with a script-only interstitial), but a real Chrome session via the real Chrome debug port walks through on first navigation — no captcha, no proxy, no login. Listings are rendered client-side into [data-testid="property-card"] cards; pagination uses a "Load more results" button after the first 25. Prices only populate when the URL carries checkin/checkout/group_adults params. Activate for any booking.com /searchresults.html scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Booking.com (booking.com)
 
-> Hotel/stay search results on `/searchresults.html?ss=<destination>`. Real Chrome via `TORCH_CHROME_ENDPOINT` clears the CloudFront JS challenge on first nav. Cards are in the DOM (not the initial HTML), pagination is click-to-load-more, and **prices are absent unless dates are in the URL**.
+> Hotel/stay search results on `/searchresults.html?ss=<destination>`. Real Chrome via `127.0.0.1:9222` clears the CloudFront JS challenge on first nav. Cards are in the DOM (not the initial HTML), pagination is click-to-load-more, and **prices are absent unless dates are in the URL**.
 
 ## Detection
 
@@ -32,13 +32,13 @@ metadata:
 
 - **Phase 0 (curl):** ❌ HTTP 202 challenge page, no data.
 - **Phase 1 (framework JSON):** ❌ no `__NEXT_DATA__`, no global payload blob worth parsing.
-- **Phase 2 (browser):** ✅ `puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT })` — zero challenges, cards render immediately. No stealth plugin required.
+- **Phase 2 (browser):** ✅ `puppeteer.connect({ browserURL: "http://127.0.0.1:9222" })` — zero challenges, cards render immediately. No stealth plugin required.
 
 ## Stealth config that works
 
 ```js
 import puppeteer from "puppeteer-core";
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900 });
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -88,7 +88,7 @@ Review-score text comes out like `"Scored 9.3 9.3Wonderful 24 reviews"` — spli
 | 1. UA / headers | ❌ | Real Chrome handles it |
 | 2. Cookies / session | ❌ | None required |
 | 3. puppeteer-extra-stealth | ❌ | Not used |
-| 4. Real Chrome (`TORCH_CHROME_ENDPOINT`) | ✅ | The single thing that matters |
+| 4. Real Chrome (`127.0.0.1:9222`) | ✅ | The single thing that matters |
 | 5. CAPTCHA solver | ❌ | Never seen one |
 | 6. Residential proxy | ❌ | Direct connection fine |
 | 7. Rate limiting | ❌ | 758 cards in one session, no throttle |
@@ -139,6 +139,6 @@ Booking caps search results around ~1000 for a city query. For Tokyo with a 2-ni
 3. **Sign-in modal** sometimes appears on nav. Dismiss with `[aria-label="Dismiss sign-in info."]` in a try/catch (non-fatal).
 4. **"Load more results" is a `<button>`, not an anchor** — find it by text match, not by testid (none exists).
 5. **CloudFront returns 202, not 403**, on bare curl. It's a JS challenge page disguised as success — always check content length and look for `reportChallengeError` if using curl directly.
-6. `close()` vs `disconnect()`: always `browser.disconnect()` when using `TORCH_CHROME_ENDPOINT` or you will kill the user's Chrome.
+6. `close()` vs `disconnect()`: always `browser.disconnect()` when using `127.0.0.1:9222` or you will kill the user's Chrome.
 7. Hard cap appears to be ~1000 results per query; split by `nflt=` neighborhood filters or by dates to expand coverage.
 8. `review-score` text is triple-concatenated (`"Scored X.Y X.YLabel N reviews"`) — regex it out if you need structured fields.

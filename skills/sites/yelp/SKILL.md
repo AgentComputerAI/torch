@@ -1,6 +1,6 @@
 ---
 name: yelp
-description: Proven scraping playbook for yelp.com search result pages (/search?find_desc=...&find_loc=...). Yelp is behind DataDome — bare curl gets HTTP 403 with `server: DataDome` and a captcha-delivery interstitial. A real Chrome session via TORCH_CHROME_ENDPOINT walks straight through after the first navigation (no captcha solver, no proxy needed) because the persistent `datadome` cookie is already trusted on the user's profile. HTML is server-rendered; cheerio parses 10 organic results per page. Activate for any yelp.com /search target.
+description: Proven scraping playbook for yelp.com search result pages (/search?find_desc=...&find_loc=...). Yelp is behind DataDome — bare curl gets HTTP 403 with `server: DataDome` and a captcha-delivery interstitial. A real Chrome session via the real Chrome debug port walks straight through after the first navigation (no captcha solver, no proxy needed) because the persistent `datadome` cookie is already trusted on the user's profile. HTML is server-rendered; cheerio parses 10 organic results per page. Activate for any yelp.com /search target.
 metadata:
   author: torch
   version: "1.0.0"
@@ -34,7 +34,7 @@ metadata:
 
 - **Phase 0 (curl)**: 403 DataDome → escalate.
 - **Phase 1 (framework)**: no Next/Nuxt blob, no API endpoint visible in source → escalate.
-- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT })` → first nav clears DataDome automatically within ~1.5s, subsequent navs are instant.
+- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: "http://127.0.0.1:9222" })` → first nav clears DataDome automatically within ~1.5s, subsequent navs are instant.
 - **Phase 3**: parse with cheerio, walk leaf-text spans for neighborhood/status/snippet.
 
 ## Stealth config that works
@@ -43,7 +43,7 @@ None. **Don't** use puppeteer-extra/stealth on the real-Chrome path — Yelp's p
 
 ```js
 import puppeteer from "puppeteer-core";
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setViewport({ width: 1366, height: 900 });
 ```
@@ -117,7 +117,7 @@ reviewCount = Math.round(parseFloat(n) * mult);
 | 1. UA / headers                    | No      | Real Chrome supplies them                   |
 | 2. Cookies / session               | **Yes** | The persistent `datadome` cookie *is* the bypass |
 | 3. Stealth plugin                  | No      | Counter-productive on the real-Chrome path  |
-| 4. Real Chrome via CDP             | **Yes** | `TORCH_CHROME_ENDPOINT` mandatory           |
+| 4. Real Chrome via CDP             | **Yes** | `127.0.0.1:9222` mandatory           |
 | 5. CAPTCHA solver (2Captcha/Capmonster) | No  | DataDome auto-clears, no captcha shown      |
 | 6. Residential proxy               | No      | Single home IP is fine for ≤1 req/sec       |
 | 7. Rate limit / backoff            | Light   | 1.5s polling between pages is plenty        |

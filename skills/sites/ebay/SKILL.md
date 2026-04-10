@@ -1,6 +1,6 @@
 ---
 name: ebay
-description: Proven scraping playbook for ebay.com search result pages (/sch/i.html?_nkw=...). eBay gates first requests with a "Pardon Our Interruption" splash challenge, but it clears automatically in a real Chrome session via TORCH_CHROME_ENDPOINT — no 2Captcha, no proxies, no login needed. Activate for any ebay.com /sch/ target.
+description: Proven scraping playbook for ebay.com search result pages (/sch/i.html?_nkw=...). eBay gates first requests with a "Pardon Our Interruption" splash challenge, but it clears automatically in a real Chrome session via the real Chrome debug port — no 2Captcha, no proxies, no login needed. Activate for any ebay.com /sch/ target.
 metadata:
   author: torch
   version: "1.0.0"
@@ -31,14 +31,14 @@ metadata:
 ## Strategy used
 
 - **Phase 0 (curl)** — blocked by splash challenge (`Pardon Our Interruption`). Skipped Phase 1.
-- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT })` cleared the challenge in one redirect. Extraction is pure DOM scraping; no API replay needed.
+- **Phase 2 (browser)** — `puppeteer.connect({ browserURL: "http://127.0.0.1:9222" })` cleared the challenge in one redirect. Extraction is pure DOM scraping; no API replay needed.
 
 ## Stealth config that works
 
 No stealth plugin needed when using the real Chrome profile. Minimal connect:
 
 ```js
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 900 });
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -105,7 +105,7 @@ Typical SRP yields ~60 cards (ul.srp-results) per page. Pagination: append `&_pg
 | 1. User-Agent | n/a | Real Chrome supplies it |
 | 2. Headers | n/a | Real Chrome supplies them |
 | 3. Cookies | ✅ auto | Splash sets `__uzm*`, `dp1`, `__deba` — persisted by real Chrome |
-| 4. Stealth plugin | ❌ | Not needed when using TORCH_CHROME_ENDPOINT |
+| 4. Stealth plugin | ❌ | Not needed when using the real Chrome debug port |
 | 5. CAPTCHA solve | ❌ | Splash is JS-only, no visible captcha |
 | 6. Residential proxy | ❌ | US datacenter IP worked fine |
 | 7. Rate limiting | light | Sleep ~250ms between pages when paginating |
@@ -148,4 +148,4 @@ Typical SRP yields ~60 cards (ul.srp-results) per page. Pagination: append `&_pg
 4. **Title in `.s-card__title`** is wrapped in a `<span class="su-styled-text primary default">` — target that inner span first, fall back to `img[alt]`.
 5. **Tracking params** in `href` are massive (`itmmeta`, `hash`, `itmprp`, etc.). Strip with `href.split("?")[0]` to get the canonical `/itm/<id>` URL.
 6. **First card is sometimes the "Shop on eBay" placeholder** on some queries — filter by `title === 'Shop on eBay'` if you see it.
-7. Use `disconnect()`, never `close()`, when connected via TORCH_CHROME_ENDPOINT — `close()` would kill the user's real Chrome.
+7. Use `disconnect()`, never `close()`, when connected via the real Chrome debug port — `close()` would kill the user's real Chrome.

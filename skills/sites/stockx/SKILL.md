@@ -1,6 +1,6 @@
 ---
 name: stockx
-description: Proven scraping playbook for stockx.com listing pages (e.g. /sneakers/most-active, /sneakers/release-date, category leaderboards). Cloudflare hard-blocks bare curl with `cf-mitigated: challenge` + HTTP 403, but a puppeteer connection to the user's real Chrome via TORCH_CHROME_ENDPOINT walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. Products are server-rendered as `[data-testid="productTile"]` blocks; `__NEXT_DATA__` exists but does NOT contain product data (hydrated client-side). Activate for any stockx.com listing scrape.
+description: Proven scraping playbook for stockx.com listing pages (e.g. /sneakers/most-active, /sneakers/release-date, category leaderboards). Cloudflare hard-blocks bare curl with `cf-mitigated: challenge` + HTTP 403, but a puppeteer connection to the user's real Chrome via the real Chrome debug port walks straight through with zero challenges — no stealth plugin, no proxy, no captcha. Products are server-rendered as `[data-testid="productTile"]` blocks; `__NEXT_DATA__` exists but does NOT contain product data (hydrated client-side). Activate for any stockx.com listing scrape.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # StockX (stockx.com)
 
-> StockX is a Next.js SPA behind Cloudflare with aggressive bot scoring. Curl is rejected at L7 with a `cf-mitigated: challenge` header. But a real Chrome session (via `TORCH_CHROME_ENDPOINT`) is let straight through — no challenge page, no captcha, no IUAM interstitial. All product tiles are in the initial DOM after hydration and can be scraped with `page.evaluate()`. Don't bother with `__NEXT_DATA__` — on listing pages it only contains i18n and req metadata, not the product list.
+> StockX is a Next.js SPA behind Cloudflare with aggressive bot scoring. Curl is rejected at L7 with a `cf-mitigated: challenge` header. But a real Chrome session (via `127.0.0.1:9222`) is let straight through — no challenge page, no captcha, no IUAM interstitial. All product tiles are in the initial DOM after hydration and can be scraped with `page.evaluate()`. Don't bother with `__NEXT_DATA__` — on listing pages it only contains i18n and req metadata, not the product list.
 
 ## Detection
 
@@ -34,7 +34,7 @@ metadata:
 
 - **Phase 0 (curl)**: 403 + `cf-mitigated: challenge`. Skip.
 - **Phase 1 (framework)**: Next.js, but `__NEXT_DATA__` is empty of product data. Skip.
-- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })`. **Works on the first try with zero evasion**. Don't bother with the stealth plugin fallback — a disposable Chromium gets hard-blocked by Cloudflare here.
+- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: the real Chrome debug port })`. **Works on the first try with zero evasion**. Don't bother with the stealth plugin fallback — a disposable Chromium gets hard-blocked by Cloudflare here.
 
 ## Stealth config that works
 
@@ -44,7 +44,7 @@ None. Just connect to the user's real Chrome:
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.connect({
-  browserURL: process.env.TORCH_CHROME_ENDPOINT,
+  browserURL: "http://127.0.0.1:9222",
 });
 const page = await browser.newPage();
 await page.goto("https://stockx.com/sneakers/most-active", {
@@ -107,7 +107,7 @@ Selectors are `data-testid` based and have been stable through multiple StockX r
 | 3. HTTP/2 fingerprint          | ❌      | Real Chrome                                                   |
 | 4. TLS / JA3                   | ❌      | Real Chrome                                                   |
 | 5. Stealth plugin (disposable) | ❌      | Don't bother — Cloudflare still blocks disposable Chromium    |
-| 6. Real Chrome via CDP         | ✅      | **THE** fix. `TORCH_CHROME_ENDPOINT` walks through unchallenged |
+| 6. Real Chrome via CDP         | ✅      | **THE** fix. `127.0.0.1:9222` walks through unchallenged |
 | 7. Residential proxy           | ❌      | Not needed from a clean residential IP                        |
 | 8. Captcha solver              | ❌      | No captcha appears                                            |
 | 9. Human-in-the-loop           | ❌      | —                                                             |
@@ -139,7 +139,7 @@ Selectors are `data-testid` based and have been stable through multiple StockX r
 
 1. **Curl is a dead end.** 403 + `cf-mitigated: challenge` no matter the headers. Don't iterate on it.
 2. **`__NEXT_DATA__` is a red herring.** It exists (~300 KB) but on listing pages contains only i18n + req metadata, no products. Skip it and scrape the DOM.
-3. **Never `browser.close()`** when connected via `TORCH_CHROME_ENDPOINT` — that kills the user's Chrome. Always `disconnect()`.
+3. **Never `browser.close()`** when connected via `127.0.0.1:9222` — that kills the user's Chrome. Always `disconnect()`.
 4. **`waitUntil: "networkidle2"` hangs.** Analytics/ws connections keep the network busy. Use `domcontentloaded` + `waitForSelector('[data-testid="productTile"]')`.
 5. **Disposable Chromium + stealth does NOT work here.** Cloudflare scores it as a bot. Real Chrome is mandatory.
 6. **Emotion CSS classes rotate.** The Xpress Ship flag currently uses `span.css-pgrg7t` — rederive from a live tile if it breaks. The `data-testid` attributes are stable; everything else is not.

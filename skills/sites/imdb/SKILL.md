@@ -1,6 +1,6 @@
 ---
 name: imdb
-description: Proven scraping playbook for imdb.com. Next.js SPA behind CloudFront + AWS WAF (x-amzn-waf-action challenge on raw curl). Real Chrome via TORCH_CHROME_ENDPOINT sails past the challenge on first navigation — no captcha, no proxy. The clean path is __NEXT_DATA__ JSON on chart/list pages. Activate for any imdb.com target.
+description: Proven scraping playbook for imdb.com. Next.js SPA behind CloudFront + AWS WAF (x-amzn-waf-action challenge on raw curl). Real Chrome via the real Chrome debug port sails past the challenge on first navigation — no captcha, no proxy. The clean path is __NEXT_DATA__ JSON on chart/list pages. Activate for any imdb.com target.
 metadata:
   author: torch
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # IMDb (imdb.com)
 
-Full catalog (charts, titles, names) is a Next.js app served via CloudFront with an AWS WAF challenge on bare curl requests. A real Chrome session (TORCH_CHROME_ENDPOINT) passes the challenge silently; `__NEXT_DATA__` then yields a complete, typed JSON payload that's vastly richer than the DOM.
+Full catalog (charts, titles, names) is a Next.js app served via CloudFront with an AWS WAF challenge on bare curl requests. A real Chrome session (the real Chrome debug port) passes the challenge silently; `__NEXT_DATA__` then yields a complete, typed JSON payload that's vastly richer than the DOM.
 
 ## Detection
 
@@ -30,14 +30,14 @@ Full catalog (charts, titles, names) is a Next.js app served via CloudFront with
 
 - **Phase 0 (curl)**: blocked. `HTTP/2 202` + `x-amzn-waf-action: challenge`, zero body. Don't waste time tweaking headers — AWS WAF is JS-challenge based.
 - **Phase 1 (framework)**: skipped as a standalone fetch path — same WAF wall — but `__NEXT_DATA__` is the extraction target once the page loads in a browser.
-- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: TORCH_CHROME_ENDPOINT })`. Real Chrome clears WAF on the first navigation with no interaction. No stealth plugin, no captcha solver, no proxy.
+- **Phase 2 (browser)**: `puppeteer.connect({ browserURL: the real Chrome debug port })`. Real Chrome clears WAF on the first navigation with no interaction. No stealth plugin, no captcha solver, no proxy.
 
 ## Stealth config that works
 
 ```js
 import puppeteer from "puppeteer-core";
 
-const browser = await puppeteer.connect({ browserURL: process.env.TORCH_CHROME_ENDPOINT });
+const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
 const page = await browser.newPage();
 await page.goto("https://www.imdb.com/chart/top/", { waitUntil: "domcontentloaded", timeout: 45000 });
 await page.waitForSelector("li.ipc-metadata-list-summary-item");
@@ -89,7 +89,7 @@ DOM fallback (if the payload shape ever changes): `li.ipc-metadata-list-summary-
 | 8. Human-in-the-loop | — | — |
 | 9. Give up | — | — |
 
-The single requirement is `TORCH_CHROME_ENDPOINT` pointing at a real Chrome with any browsing history. A fresh puppeteer-extra-stealth Chromium *might* also work but is not tested here.
+The single requirement is `127.0.0.1:9222` pointing at a real Chrome with any browsing history. A fresh puppeteer-extra-stealth Chromium *might* also work but is not tested here.
 
 ## Data shape
 
@@ -121,7 +121,7 @@ The single requirement is `TORCH_CHROME_ENDPOINT` pointing at a real Chrome with
 ## Gotchas & lessons
 
 1. Plain `curl` (even with a full browser header set) always returns `202` + `x-amzn-waf-action: challenge` and an empty body. Don't chase it — go straight to the browser.
-2. Use `browser.disconnect()` not `browser.close()` when connected via `TORCH_CHROME_ENDPOINT`, or you'll kill the user's Chrome.
+2. Use `browser.disconnect()` not `browser.close()` when connected via `127.0.0.1:9222`, or you'll kill the user's Chrome.
 3. `__NEXT_DATA__` is far richer than the DOM: poster URLs, vote counts, genres, tconsts, runtime in seconds — extract from the JSON, not CSS selectors.
 4. `n.runtime.seconds` is in seconds; divide by 60 for minutes if needed.
 5. Titles on charts sometimes have localized `titleText` vs `originalTitleText` depending on the session's region cookie — keep both.
