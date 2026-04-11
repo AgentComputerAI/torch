@@ -1,11 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
-  rmSync,
   statSync,
 } from "node:fs";
 import { resolve, dirname, delimiter } from "node:path";
@@ -36,18 +35,6 @@ function getTorchHome(): string {
 }
 
 const CHROME_PORT = Number(process.env.TORCH_CHROME_PORT ?? "9222");
-
-async function probeDebugPort(url: string, timeoutMs = 500): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(`${url}/json/version`, { signal: ctrl.signal });
-    clearTimeout(timer);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 function findChromeBinary(): string | null {
   const candidates =
@@ -118,127 +105,15 @@ const PROFILE_CLONE_EXCLUDES = [
   "SingletonSocket",
 ];
 
-function cloneChromeProfile(src: string, dst: string): boolean {
+function cloneChromeProfileInBackground(src: string, dst: string): void {
   mkdirSync(dirname(dst), { recursive: true });
   const rsyncArgs = ["-a", "--delete"];
   for (const ex of PROFILE_CLONE_EXCLUDES) {
     rsyncArgs.push(`--exclude=${ex}`);
   }
   rsyncArgs.push(`${src.replace(/\/?$/, "/")}`, `${dst.replace(/\/?$/, "/")}`);
-  const result = spawnSync("rsync", rsyncArgs, { stdio: "inherit" });
-  return result.status === 0;
-}
-
-function stripSingletonLocks(profileDir: string): void {
-  for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
-    const p = resolve(profileDir, f);
-    try {
-      rmSync(p, { force: true });
-    } catch {
-      // ignore
-    }
-  }
-}
-
-async function launchTorchChrome(
-  chromeBin: string,
-  profileDir: string,
-  url: string,
-): Promise<boolean> {
-  stripSingletonLocks(profileDir);
-
-  const proc = spawn(
-    chromeBin,
-    [
-      `--remote-debugging-port=${CHROME_PORT}`,
-      `--user-data-dir=${profileDir}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-session-crashed-bubble",
-      "--disable-features=Translate",
-      "about:blank",
-    ],
-    { detached: true, stdio: "ignore" },
-  );
-  proc.unref();
-
-  for (let i = 0; i < 75; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    if (await probeDebugPort(url)) return true;
-  }
-  return false;
-}
-
-async function ensureChromeEndpoint(): Promise<string | null> {
-  // 1. User override via env var
-  if (process.env.TORCH_CHROME_ENDPOINT) return process.env.TORCH_CHROME_ENDPOINT;
-
-  const url = `http://127.0.0.1:${CHROME_PORT}`;
-
-  // 2. Already up — either user launched Chrome manually or a previous torch run did
-  if (await probeDebugPort(url)) {
-    console.error(
-      `\x1b[38;2;255;160;20m[torch]\x1b[0m reusing Chrome debug port at ${url}`,
-    );
-    return url;
-  }
-
-  // 3. Auto-launch a torch-owned Chrome with a clone of the user's real profile
-  const chromeBin = findChromeBinary();
-  if (!chromeBin) {
-    console.error(
-      "\x1b[38;2;255;160;20m[torch]\x1b[0m Chrome not installed — falling back to disposable Chromium",
-    );
-    return null;
-  }
-
-  const torchProfile = resolve(getTorchHome(), TORCH_CHROME_PROFILE_SUBDIR);
-  const realProfile = getRealChromeProfile();
-
-  if (!existsSync(torchProfile)) {
-    if (!realProfile || !existsSync(realProfile)) {
-      console.error(
-        "\x1b[38;2;255;160;20m[torch]\x1b[0m no Chrome profile to clone — falling back to disposable Chromium",
-      );
-      return null;
-    }
-    console.error(
-      "\x1b[38;2;255;160;20m[torch]\x1b[0m cloning Chrome profile (one-time, ~10-30s)...",
-    );
-    console.error(
-      `        source: ${realProfile}`,
-    );
-    console.error(
-      `        target: ${torchProfile}`,
-    );
-    const ok = cloneChromeProfile(realProfile, torchProfile);
-    if (!ok) {
-      console.error(
-        "\x1b[38;2;255;160;20m[torch]\x1b[0m profile clone failed — falling back to disposable Chromium",
-      );
-      return null;
-    }
-    console.error(
-      "\x1b[38;2;255;160;20m[torch]\x1b[0m profile cloned. subsequent runs will reuse it instantly.",
-    );
-  }
-
-  console.error(
-    `\x1b[38;2;255;160;20m[torch]\x1b[0m launching Chrome with debug port on ${CHROME_PORT}...`,
-  );
-
-  const launched = await launchTorchChrome(chromeBin, torchProfile, url);
-  if (!launched) {
-    console.error(
-      "\x1b[38;2;255;160;20m[torch]\x1b[0m Chrome launch timed out — falling back to disposable Chromium",
-    );
-    return null;
-  }
-
-  console.error(
-    `\x1b[38;2;255;160;20m[torch]\x1b[0m Chrome ready at ${url} — scrapers will use cloned profile (real cookies, history, TLS state)`,
-  );
-  return url;
+  const child = spawn("rsync", rsyncArgs, { stdio: "ignore", detached: true });
+  child.unref();
 }
 
 function copyMissingEntries(src: string, dest: string): void {
@@ -278,6 +153,14 @@ function seedHome(home: string): void {
   if (existsSync(agentsSrc)) {
     const agentsDest = resolve(home, "agents");
     copyMissingEntries(agentsSrc, agentsDest);
+  }
+
+  const torchProfile = resolve(home, TORCH_CHROME_PROFILE_SUBDIR);
+  if (!existsSync(torchProfile)) {
+    const realProfile = getRealChromeProfile();
+    if (realProfile && existsSync(realProfile)) {
+      cloneChromeProfileInBackground(realProfile, torchProfile);
+    }
   }
 }
 
@@ -348,7 +231,8 @@ export async function main(): Promise<void> {
     await runSetup(home, APP_ROOT);
   }
 
-  const chromeEndpoint = await ensureChromeEndpoint();
+  const chromeBin = findChromeBinary();
+  const torchProfile = resolve(home, TORCH_CHROME_PROFILE_SUBDIR);
 
   const piCli = resolve(APP_ROOT, "node_modules", "@mariozechner", "pi-coding-agent", "dist", "cli.js");
   if (!existsSync(piCli)) {
@@ -399,9 +283,11 @@ export async function main(): Promise<void> {
       PI_CODING_AGENT_DIR: home,
       PI_HARDWARE_CURSOR: process.env.PI_HARDWARE_CURSOR ?? "1",
       PI_SKIP_VERSION_CHECK: "1",
-      ...(process.env.TORCH_CAMOUFOX_ENDPOINT
-        ? { TORCH_CAMOUFOX_ENDPOINT: process.env.TORCH_CAMOUFOX_ENDPOINT }
-        : {}),
+      ...(chromeBin ? { TORCH_CHROME_BIN: chromeBin } : {}),
+      ...(existsSync(torchProfile) ? { TORCH_CHROME_PROFILE: torchProfile } : {}),
+      TORCH_CHROME_PORT: String(CHROME_PORT),
+      ...(process.env.TORCH_CHROME_ENDPOINT ? { TORCH_CHROME_ENDPOINT: process.env.TORCH_CHROME_ENDPOINT } : {}),
+      ...(process.env.TORCH_CAMOUFOX_ENDPOINT ? { TORCH_CAMOUFOX_ENDPOINT: process.env.TORCH_CAMOUFOX_ENDPOINT } : {}),
     },
   });
 
