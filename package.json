@@ -1,6 +1,6 @@
 {
   "name": "@agentcomputer/torch",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "🔥 The self-healing AI scraping agent 🔥",
   "license": "MIT",
   "type": "module",

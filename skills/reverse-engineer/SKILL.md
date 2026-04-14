@@ -561,21 +561,106 @@ const protoBytes = buf.slice(5, 5 + messageLength);
 const decoded = MessageType.decode(protoBytes);
 ```
 
-## Output
+## Output — write the API docs as a site skill
 
-After reverse engineering, document everything in the site skill. The most valuable fields:
+The reverse-engineering run is only valuable if the next person never has to repeat it. Capture the result as an in-depth API documentation file at `skills/sites/<slug>/SKILL.md` (same path the `scrape` skill writes to). Reverse-engineer skills are first-class site skills — the difference is that they document an **API**, not a DOM scrape.
 
-- The exact API endpoint URL(s) with required query params
-- Minimum required headers (strip everything unnecessary)
-- Auth token extraction method (which location, what pattern)
-- Decryption method + key location (if encrypted), noting whether keys rotate per session
-- WebSocket endpoint + subscription protocol + channel names (if streaming)
-- GraphQL queries (full text, not just hashes)
-- Protobuf schema or `--decode_raw` field mapping (if binary)
-- Rate limits observed
-- What the API returns vs what the HTML shows (APIs often return more data)
+The slug rule is the same as scrape: lowercase `[a-z0-9-]`, no dots, no `www.`, directory name === `name:` frontmatter (see `contributing` for the full convention).
 
-This documentation is the most valuable output — the next person skips the entire reverse engineering process.
+### The final scraper must not open a browser
+
+If the API replays cleanly with `fetch`, the published skill and its example code must use `fetch` only — **no `puppeteer.connect`, no `puppeteer.launch`, no Playwright, no real Chrome, no Camoufox**. The whole point of reverse engineering is to delete the browser from the hot path. A user running `torch <site>` against an API-backed skill should see an HTTP request fly, not a Chrome window pop up. Opening a browser when a 50ms `fetch` would do is the cardinal sin of this skill — it's slower, more fragile, and signals that the reverse-engineering work was abandoned halfway.
+
+The browser is allowed in **two narrow cases**, and only when documented as such:
+
+1. **Recon-only**, run once by the skill author to capture endpoints/headers/keys — never invoked by the final scraper.
+2. **Per-session token bootstrap**, when the API requires a freshly-minted CSRF / auth / decryption key that can only be extracted from a live page load. Even then, open the page once, scrape the token, **disconnect**, and replay the API with `fetch` for every subsequent request. Document the bootstrap step explicitly so it's obvious why a browser appears at all.
+
+If neither applies, the skill is browser-free. See `skills/sites/nike/SKILL.md` for the canonical "skip the browser entirely" example.
+
+### Required sections in the per-site SKILL.md
+
+Document every field below. If a section doesn't apply (e.g. no encryption), say "N/A" — don't omit it, so future readers know it was checked.
+
+```markdown
+---
+name: <slug>
+description: Proven API playbook for <domain>. <one line: which endpoint, what auth, what anti-bot, whether browser is needed>. Activate for any <domain> URL.
+metadata:
+  author: <handle>
+  version: "1.0.0"
+---
+
+# <Site name> (<domain>)
+
+> One-paragraph summary: which internal API powers the page, why fetch beats the browser, and any single gotcha that would otherwise burn an hour.
+
+## Detection
+Table: framework, CDN, anti-bot, auth, robots.txt, content-type of API responses.
+
+## Strategy
+Which level of the escalation ladder solved it (1-9). Which levels were tried and rejected, and why. State explicitly: "Browser needed? No / Yes — recon only / Yes — token bootstrap only".
+
+## Endpoint(s)
+- Full URL template with every path/query parameter labeled
+- HTTP method
+- Per-parameter table: name, example value, whether required, what it controls
+- Cursor / pagination shape (link header, `next` field, `?page=`, etc.)
+
+## Required headers
+Copy-pasteable JS object with the **minimum** header set that works. Note any header whose absence returns a specific error string (quote the error). Mark headers that must be fresh per session vs. statically reusable.
+
+## Auth / token extraction
+- Where the token lives (cookie name, localStorage key, meta tag, inline script regex, `__NEXT_DATA__` path, ...)
+- Lifetime (per-request, per-session, long-lived)
+- Extraction snippet
+- If the token is generated client-side, link to the JS file + line where it's computed
+
+## Decryption (if applicable)
+- Algorithm (NaCl secretbox / AES-GCM / CryptoJS / XOR / ...)
+- Where the key and nonce/IV live in the page or JS
+- Whether keys rotate per session
+- Working decrypt snippet
+
+## WebSocket / streaming (if applicable)
+- WS URL, subprotocol, handshake flow
+- Subscribe message format and channel discovery
+- Heartbeat interval
+- Frame format (JSON / protobuf / custom)
+
+## GraphQL (if applicable)
+- Full query text (not the persisted-query hash)
+- Variables shape
+- Whether persisted queries are enforced and how to bypass
+
+## Protobuf (if applicable)
+- `.proto` schema, or the `--decode_raw` field-number → field-name mapping you reconstructed
+- gRPC-Web framing notes if relevant
+
+## Replay snippet
+A complete, runnable `fetch`-only example that pulls one page of real data. Must work when copy-pasted into a fresh file with zero edits beyond the query parameters. **No puppeteer imports.**
+
+## Pagination / crawl architecture
+Cursor field, page-size cap, observed rate limits, recommended sleep between requests, checkpointing strategy.
+
+## Anti-blocking summary
+Table: which of the 9 reverse-engineer levels were needed, which were not, notes. Same shape as the scrape skill's table.
+
+## Data shape
+JSON example of one decoded record. Show the **API response** shape, not the flattened output.
+
+## Gotchas & lessons
+Numbered list. Quote exact error strings. Note the things that made you waste time: param caps (e.g. Nike's `count > 24 → 400`), HEAD-vs-GET differences, header-presence checks, key rotation cadence, etc.
+
+## What the API returns vs. what the HTML shows
+APIs almost always return more fields than the rendered page. List the bonus fields — that's what makes the API worth reverse-engineering in the first place.
+```
+
+### Share it upstream
+
+If the site didn't already have a skill before this run, **open a pull request adding `skills/sites/<slug>/SKILL.md` to `github.com/agentcomputer/torch`** so the next person hitting that domain inherits the API playbook instead of climbing the 9-level ladder again. One site per PR. Tell the user once you've saved the skill locally that they should open the PR — see `contributing` for the general PR workflow and quality bar.
+
+A reverse-engineered API skill is one of the highest-leverage contributions to torch: every future invocation of `torch <site>` against that domain becomes a single `fetch` instead of a browser launch. That delta — 50ms vs 5 seconds, no anti-bot exposure, no rate limit risk — is the dividend of doing the work once and writing it down.
 
 ## npm packages torch can install on demand
 

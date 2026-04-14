@@ -81,7 +81,7 @@ torch https://www.amazon.com/s?k=mechanical+keyboard "top 30 keyboards with pric
 torch --rpc
 ```
 
-Torch auto-clones your Chrome profile on first run (one-time, ~10-30s via rsync with cache exclusion, ~200MB on disk), auto-launches Chrome with `--remote-debugging-port=9222`, and every subsequent run reuses the same Chrome instance instantly.
+Torch auto-clones your Chrome profile on first run (one-time, ~10-30s via rsync with cache exclusion, ~200MB on disk) and exposes the binary + profile path via `TORCH_CHROME_BIN` / `TORCH_CHROME_PROFILE` so the agent can launch a debug-port Chrome **on demand** the first time a scrape actually needs a browser. The `torch` command itself never opens a browser window — startup is just env plumbing and a backgrounded rsync.
 
 ---
 
@@ -89,7 +89,7 @@ Torch auto-clones your Chrome profile on first run (one-time, ~10-30s via rsync 
 
 Every other scraper fights the same losing battle: launch a fresh Chromium, patch `navigator.webdriver`, rotate a fake fingerprint, and lose anyway — because the site's bot scorer weighs **reputation** and **browsing history** more than any single fingerprint signal.
 
-Torch flips it. On first run it **clones your actual Chrome profile** (excluding caches via rsync) into `~/.torch/chrome-profile`, then auto-launches a second Chrome instance against that clone with the debug port open on `127.0.0.1:9222`. When the scrape skill needs a browser, it does:
+Torch flips it. On first run it **clones your actual Chrome profile** (excluding caches via rsync) into `~/.torch/chrome-profile`. The clone is reused across runs but no Chrome process is spawned until a scrape actually needs one — at that point the scrape skill launches Chrome against the clone with `--remote-debugging-port=9222` and connects:
 
 ```js
 import puppeteer from "puppeteer-core";
@@ -167,7 +167,7 @@ Torch does Phase 0 recon → Phase 1 framework detection → Phase 2 browser scr
 Torch escalates through these layers only as far as needed. Stops at the first one that works.
 
 ```
-  Layer 0  🏆  Connect to real Chrome at 127.0.0.1:9222 (auto-launched cloned profile)
+  Layer 0  🏆  Launch real Chrome on demand against the cloned profile, connect at 127.0.0.1:9222
   Layer 1  👻  Headed mode + puppeteer-extra-plugin-stealth (fallback)
   Layer 2  📋  Realistic headers + randomized viewport + UA rotation
   Layer 3  🍪  Cookie / session persistence across runs
@@ -225,7 +225,8 @@ The real Chrome auto-clone is optional but **strongly recommended** — it's the
      │
      ├─ cli.ts                        parse args, load .env
      │    │
-     │    ├─ ensureChromeEndpoint()   detect / clone / launch Chrome debug port
+     │    ├─ background rsync clone    ~/Library/Application Support/Google/Chrome → ~/.torch/chrome-profile
+     │    ├─ TORCH_CHROME_BIN / _PROFILE / _PORT exported for on-demand launch by skills
      │    │
      │    └─ spawn pi-coding-agent with:
      │         ├─ SYSTEM.md           invariants, scout mode, naming, cleanup

@@ -83,7 +83,7 @@ A `fetch` call takes 50ms. A Puppeteer page load takes 3-10 seconds. If the data
 
 Only when Phase 0-2 failed or when the site genuinely renders data client-side with no API:
 
-1. **First, try connecting to the real Chrome at `http://127.0.0.1:9222`** (via `puppeteer.connect`). Torch auto-launches a Chrome instance on that port at startup using a clone of the user's profile, so this attaches to a real browser with real cookies, history, and TLS session state — the single biggest anti-blocking win.
+1. **First, try connecting to the real Chrome at `http://127.0.0.1:${TORCH_CHROME_PORT ?? 9222}`** (via `puppeteer.connect`). If nothing's listening, **launch it on demand**: spawn `$TORCH_CHROME_BIN` with `--remote-debugging-port=$TORCH_CHROME_PORT --user-data-dir=$TORCH_CHROME_PROFILE`, poll the port until it answers, then connect. Torch clones the user's Chrome profile into `$TORCH_CHROME_PROFILE` on first run but **never spawns Chrome itself** — the `torch` command must not pop a browser window on startup. The on-demand launch from the scraper is the right place. See `strategies/anti-blocking.md` Layer 0 for the full snippet.
 2. If the connect throws (no Chrome running — e.g. VM or CI), check `process.env.TORCH_CAMOUFOX_ENDPOINT` and connect via `playwright-core`'s `firefox.connect(ws://...)` for the C++-level stealth fallback. See the `camoufox` skill for setup.
 3. If neither is available, fall back to `puppeteer.launch()` with the stealth plugin (`reference/puppeteer-boilerplate.md`). Disposable Chromium with zero history — fine for soft targets but almost guaranteed to trip bot scoring on hard sites.
 4. **Capture network traffic** to discover API endpoints called during page load — then switch BACK to the `reverse-engineer` skill to replay those APIs directly. The browser was just a recon tool; the actual scraper should use `fetch` against the discovered API whenever possible.
@@ -97,34 +97,63 @@ If blocked, escalate through `strategies/anti-blocking.md`. Connecting to the re
 import puppeteer from "puppeteer-core";
 import puppeteerExtra from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
-const REAL_CHROME = "http://127.0.0.1:9222";
+const PORT = process.env.TORCH_CHROME_PORT ?? "9222";
+const BROWSER_URL = `http://127.0.0.1:${PORT}`;
+
+async function connectOrLaunchRealChrome() {
+  // (a) Already running — reuse it
+  try {
+    return await puppeteer.connect({ browserURL: BROWSER_URL });
+  } catch {}
+
+  // (b) Launch on demand against the cloned profile
+  const bin = process.env.TORCH_CHROME_BIN;
+  const profile = process.env.TORCH_CHROME_PROFILE;
+  if (!bin || !profile || !existsSync(bin) || !existsSync(profile)) return null;
+
+  const child = spawn(bin, [
+    `--remote-debugging-port=${PORT}`,
+    `--user-data-dir=${profile}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--restore-last-session=false",
+  ], { stdio: "ignore", detached: true });
+  child.unref();
+
+  for (let i = 0; i < 40; i++) {
+    try { return await puppeteer.connect({ browserURL: BROWSER_URL }); } catch {}
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return null;
+}
+
 let browser;
 let kind;
 let cleanup;
 
-try {
+browser = await connectOrLaunchRealChrome();
+if (browser) {
   // Tier 1 — real Chrome (cloned profile, debug port)
-  browser = await puppeteer.connect({ browserURL: REAL_CHROME });
   kind = "real-chrome";
-  cleanup = async () => browser.disconnect(); // never close — it's the user's Chrome
-} catch {
-  if (process.env.TORCH_CAMOUFOX_ENDPOINT) {
-    // Tier 2 — Camoufox via playwright-core (VMs / headless servers)
-    const { firefox } = await import("playwright-core");
-    browser = await firefox.connect(process.env.TORCH_CAMOUFOX_ENDPOINT);
-    kind = "camoufox";
-    cleanup = async () => browser.close();
-  } else {
-    // Tier 3 — disposable Chromium + stealth (almost always detected on hard sites)
-    puppeteerExtra.use(StealthPlugin());
-    browser = await puppeteerExtra.launch({
-      headless: false,
-      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-    });
-    kind = "disposable-chromium";
-    cleanup = async () => browser.close();
-  }
+  cleanup = async () => browser.disconnect(); // never close — leave the on-demand Chrome alive for reuse
+} else if (process.env.TORCH_CAMOUFOX_ENDPOINT) {
+  // Tier 2 — Camoufox via playwright-core (VMs / headless servers)
+  const { firefox } = await import("playwright-core");
+  browser = await firefox.connect(process.env.TORCH_CAMOUFOX_ENDPOINT);
+  kind = "camoufox";
+  cleanup = async () => browser.close();
+} else {
+  // Tier 3 — disposable Chromium + stealth (almost always detected on hard sites)
+  puppeteerExtra.use(StealthPlugin());
+  browser = await puppeteerExtra.launch({
+    headless: false,
+    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+  });
+  kind = "disposable-chromium";
+  cleanup = async () => browser.close();
 }
 
 console.log(`[torch] using ${kind}`);
@@ -139,7 +168,7 @@ try {
 }
 ```
 
-The `disconnect()` vs `close()` distinction matters: `close()` would kill the user's real Chrome instance. Always `disconnect()` on the real-Chrome tier.
+The `disconnect()` vs `close()` distinction matters: `close()` would kill the on-demand Chrome instance and force the next scrape in the same session to relaunch it. Always `disconnect()` on the real-Chrome tier so the cloned-profile Chrome stays warm for reuse.
 
 ### Phase 4 — validate and extract
 

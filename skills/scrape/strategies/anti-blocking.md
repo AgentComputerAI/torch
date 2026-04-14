@@ -31,39 +31,60 @@ Work through these layers in order. Stop when unblocked.
 
 ### Layer 0: connect to the user's real Chrome (try first if available)
 
-Torch auto-launches Chrome with `--remote-debugging-port=9222` on startup using a clone of your profile. Connect to it:
+Torch clones the user's Chrome profile into `~/.torch/chrome-profile` (or `$TORCH_CHROME_PROFILE`) on first run, then exposes `TORCH_CHROME_BIN`, `TORCH_CHROME_PROFILE`, and `TORCH_CHROME_PORT` in the agent env. **Torch does not spawn Chrome itself** — the `torch` command never opens a browser window on startup. The first scrape that needs a browser launches it on demand against the cloned profile, then every subsequent scrape in the same session reuses that one debug-port Chrome via `puppeteer.connect`.
 
 ```js
 import puppeteer from "puppeteer-core";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
-const browser = await puppeteer.connect({
-  browserURL: "http://127.0.0.1:9222",
-});
+const PORT = process.env.TORCH_CHROME_PORT ?? "9222";
+const BROWSER_URL = `http://127.0.0.1:${PORT}`;
 
+async function getRealChrome() {
+  // 1. Reuse an already-running torch Chrome on this port
+  try {
+    return await puppeteer.connect({ browserURL: BROWSER_URL });
+  } catch {}
+
+  // 2. Launch one on demand against the cloned profile
+  const bin = process.env.TORCH_CHROME_BIN;
+  const profile = process.env.TORCH_CHROME_PROFILE;
+  if (!bin || !profile || !existsSync(bin) || !existsSync(profile)) {
+    throw new Error("real-chrome unavailable — fall back to Camoufox or Layer 1");
+  }
+  const child = spawn(bin, [
+    `--remote-debugging-port=${PORT}`,
+    `--user-data-dir=${profile}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--restore-last-session=false",
+  ], { stdio: "ignore", detached: true });
+  child.unref();
+
+  // 3. Poll the debug port until it answers
+  for (let i = 0; i < 40; i++) {
+    try { return await puppeteer.connect({ browserURL: BROWSER_URL }); } catch {}
+    await new Promise(r => setTimeout(r, 250));
+  }
+  throw new Error("real-chrome failed to come up on " + BROWSER_URL);
+}
+
+const browser = await getRealChrome();
 const page = await browser.newPage();
 await page.goto(url, { waitUntil: "networkidle2" });
 // ... scrape ...
 await page.close();
-browser.disconnect();  // NEVER call browser.close() — that kills the user's Chrome
+browser.disconnect();  // NEVER call browser.close() — that kills the on-demand Chrome
 ```
 
-This uses the user's real browser profile — real cookies, real history, real TLS state, real Client Hints, real everything. Most bot scoring systems will let this through without any escalation. Skip all subsequent layers if this works.
+This uses a clone of the user's real browser profile — real cookies, real history, real TLS state, real Client Hints. Most bot scoring systems let it through without any escalation. Skip all subsequent layers if this works.
 
-**Launching Chrome with the debug port** (macOS):
-
-```bash
-# Quit Chrome fully first (cmd+Q), then:
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/Library/Application Support/Google/Chrome"
-```
-
-Torch does this automatically on startup — clones your profile, launches Chrome, and makes `127.0.0.1:9222` available.
+**Why on-demand instead of pre-launch**: a `torch` invocation that just does `torch --help` or one-shot scrapes a public JSON API should never pop a browser window. The cloned profile sits on disk doing nothing until the first scrape proves it actually needs Chrome.
 
 **Limitations**:
-- The user has to launch Chrome with the debug flag — torch can't do it without conflicting with their existing Chrome session
-- While torch is scraping, the user can still use the browser normally, but page navigation conflicts are possible
-- Not usable in CI/headless servers — use Layer 1 (fresh Chromium + stealth) there instead
+- Requires `TORCH_CHROME_BIN` and `TORCH_CHROME_PROFILE` to be set (torch's CLI exports them automatically; if they're missing you're on a VM or fresh CI box).
+- Not usable in CI / headless servers without a logged-in Chrome user — use Camoufox (`TORCH_CAMOUFOX_ENDPOINT`) or Layer 1 (fresh Chromium + stealth) there instead.
 
 ### Layer 1: headed mode + stealth (fallback when real Chrome not available)
 
